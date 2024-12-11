@@ -18,8 +18,8 @@ fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        command @ Commands::Create { .. } => commands::create::run(command)?,
-        command @ Commands::Info => commands::info::run(command)?,
+        Commands::Create { .. } => commands::create::run(&cli.command)?,
+        Commands::Info { .. } => commands::info::run(&cli.command)?,
     }
 
     Ok(())

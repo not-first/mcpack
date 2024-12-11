@@ -45,5 +45,8 @@ pub enum Commands {
         #[arg(short = 'F', long, num_args = 1.., value_delimiter = ' ', requires = "namespace")]
         folders: Option<Vec<String>>,
     },
-    Info,
+    Info {
+        /// Path to datapack folder or zip file
+        path: Option<String>,
+    },
 }

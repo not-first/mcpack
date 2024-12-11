@@ -3,8 +3,10 @@ use console::style;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use zip::ZipArchive;
 
 use crate::pack_formats;
 
@@ -25,22 +27,314 @@ struct NamespaceInfo {
     loot_tables: usize,
     predicates: usize,
     tags: usize,
-    structures: usize,
-    banner_patterns: usize,
-    chat_types: usize,
-    damage_types: usize,
-    dimensions: usize,
-    dimension_types: usize,
-    enchantments: usize,
-    enchantment_providers: usize,
-    instruments: usize,
-    item_modifiers: usize,
-    jukebox_songs: usize,
-    painting_variants: usize,
-    trim_materials: usize,
-    trim_patterns: usize,
-    wolf_variants: usize,
-    has_worldgen: bool,
+    world_gen: bool,
+}
+
+pub fn run(command: &crate::cli::Commands) -> Result<()> {
+    if let crate::cli::Commands::Info { path } = command {
+        match path {
+            Some(zip_path) => {
+                // Construct the full zip path
+                let mut full_path = String::from(zip_path);
+                if !full_path.ends_with(".zip") {
+                    full_path.push_str(".zip");
+                }
+
+                // Check if the file exists
+                if !std::path::Path::new(&full_path).exists() {
+                    anyhow::bail!("Zip file not found: {}", full_path);
+                }
+
+                let file = fs::File::open(&full_path)
+                    .with_context(|| format!("Failed to open zip file: {}", full_path))?;
+                let mut archive = ZipArchive::new(file)
+                    .with_context(|| format!("Failed to read zip archive: {}", full_path))?;
+
+                let pack_mcmeta_content = find_pack_mcmeta_in_zip(&mut archive)?;
+                let info = collect_info_from_zip(&pack_mcmeta_content, &mut archive, &full_path)?;
+                display_info(&info);
+            }
+            None => {
+                let pack_mcmeta = PathBuf::from("pack.mcmeta");
+                if !pack_mcmeta.exists() {
+                    anyhow::bail!("Not in a datapack directory (pack.mcmeta not found)");
+                }
+                let info = collect_info(&pack_mcmeta)?;
+                display_info(&info);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn find_pack_mcmeta_in_zip(archive: &mut ZipArchive<fs::File>) -> Result<String> {
+    let mut pack_mcmeta_content = None;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let name = file.name().to_string();
+
+        if name == "pack.mcmeta" || name.ends_with("/pack.mcmeta") {
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+            pack_mcmeta_content = Some(content);
+            break;
+        }
+    }
+
+    pack_mcmeta_content.context("pack.mcmeta not found in zip archive")
+}
+
+fn collect_info_from_zip(
+    pack_mcmeta_content: &str,
+    archive: &mut ZipArchive<fs::File>,
+    zip_path: &str,
+) -> Result<DatapackInfo> {
+    let mcmeta: Value =
+        serde_json::from_str(pack_mcmeta_content).context("Failed to parse pack.mcmeta")?;
+
+    let pack = mcmeta
+        .get("pack")
+        .context("Invalid pack.mcmeta: missing 'pack' object")?;
+
+    let pack_format = pack
+        .get("pack_format")
+        .context("Missing pack_format")?
+        .as_u64()
+        .context("Invalid pack_format")? as u8;
+
+    let mut supported_formats = vec![pack_format];
+
+    if let Some(formats) = pack.get("supported_formats") {
+        match formats {
+            Value::Array(arr) => {
+                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+            }
+            Value::Object(obj) => {
+                if let (Some(min), Some(max)) = (
+                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
+                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
+                ) {
+                    supported_formats = (min as u8..=max as u8).collect();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let description = match pack.get("description") {
+        Some(Value::String(s)) => s.to_string(),
+        Some(Value::Array(arr)) => {
+            arr.iter()
+                .map(|component| {
+                    match component {
+                        Value::String(s) => s.to_string(),
+                        Value::Object(obj) => {
+                            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
+                                match color {
+                                    "" => text.to_string(),
+                                    c if c.starts_with('#') => style(text).color256(24).to_string(),
+                                    "gray" => style(text).dim().to_string(),
+                                    _ => style(text).color256(24).to_string(), // Default to a nice color if we don't recognize it
+                                }
+                            } else {
+                                String::new()
+                            }
+                        }
+                        _ => String::new(),
+                    }
+                })
+                .collect::<String>()
+        }
+        Some(Value::Object(obj)) => {
+            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
+                match color {
+                    "" => text.to_string(),
+                    c if c.starts_with('#') => style(text).color256(24).to_string(),
+                    "gray" => style(text).dim().to_string(),
+                    _ => style(text).color256(24).to_string(),
+                }
+            } else {
+                "Invalid description format".to_string()
+            }
+        }
+        _ => "Invalid description".to_string(),
+    };
+
+    let name = Path::new(zip_path)
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let mut namespaces = HashMap::new();
+    let mut current_namespace = String::new();
+    let mut current_info = NamespaceInfo::default();
+
+    for i in 0..archive.len() {
+        let file = archive.by_index(i)?;
+        let path = file.name();
+
+        if let Some(data_path) = path.strip_prefix("data/") {
+            let parts: Vec<&str> = data_path.split('/').collect();
+            if parts.len() >= 2 {
+                let namespace = parts[0].to_string();
+
+                if !current_namespace.is_empty() && namespace != current_namespace {
+                    if current_info.has_content() {
+                        namespaces.insert(current_namespace.clone(), current_info);
+                    }
+                    current_info = NamespaceInfo::default();
+                }
+
+                current_namespace = namespace;
+
+                if path.contains("/worldgen/") {
+                    current_info.world_gen = true;
+                }
+
+                match parts.last() {
+                    Some(filename) if filename.ends_with(".mcfunction") => {
+                        current_info.functions += 1
+                    }
+                    Some(filename) if filename.ends_with(".json") => {
+                        if path.contains("/advancement/") {
+                            current_info.advancements += 1;
+                        } else if path.contains("/recipe/") {
+                            current_info.recipes += 1;
+                        } else if path.contains("/loot_table/") {
+                            current_info.loot_tables += 1;
+                        } else if path.contains("/predicate/") {
+                            current_info.predicates += 1;
+                        } else if path.contains("/tags/") {
+                            current_info.tags += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if !current_namespace.is_empty() && current_info.has_content() {
+        namespaces.insert(current_namespace, current_info);
+    }
+
+    Ok(DatapackInfo {
+        name,
+        description,
+        pack_format,
+        supported_formats,
+        namespaces,
+    })
+}
+
+fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
+    let content = fs::read_to_string(pack_mcmeta_path).context("Failed to read pack.mcmeta")?;
+    let mcmeta: Value = serde_json::from_str(&content).context("Failed to parse pack.mcmeta")?;
+
+    let pack = mcmeta
+        .get("pack")
+        .context("Invalid pack.mcmeta: missing 'pack' object")?;
+
+    let pack_format = pack
+        .get("pack_format")
+        .context("Missing pack_format")?
+        .as_u64()
+        .context("Invalid pack_format")? as u8;
+
+    let mut supported_formats = vec![pack_format];
+
+    if let Some(formats) = pack.get("supported_formats") {
+        match formats {
+            Value::Array(arr) => {
+                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+            }
+            Value::Object(obj) => {
+                if let (Some(min), Some(max)) = (
+                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
+                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
+                ) {
+                    supported_formats = (min as u8..=max as u8).collect();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let description = match pack.get("description") {
+        Some(Value::String(s)) => s.to_string(),
+        Some(Value::Array(arr)) => {
+            arr.iter()
+                .map(|component| {
+                    match component {
+                        Value::String(s) => s.to_string(),
+                        Value::Object(obj) => {
+                            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
+                                match color {
+                                    "" => text.to_string(),
+                                    c if c.starts_with('#') => style(text).color256(24).to_string(),
+                                    "gray" => style(text).dim().to_string(),
+                                    _ => style(text).color256(24).to_string(), // Default to a nice color if we don't recognize it
+                                }
+                            } else {
+                                String::new()
+                            }
+                        }
+                        _ => String::new(),
+                    }
+                })
+                .collect::<String>()
+        }
+        Some(Value::Object(obj)) => {
+            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
+                match color {
+                    "" => text.to_string(),
+                    c if c.starts_with('#') => style(text).color256(24).to_string(),
+                    "gray" => style(text).dim().to_string(),
+                    _ => style(text).color256(24).to_string(),
+                }
+            } else {
+                "Invalid description format".to_string()
+            }
+        }
+        _ => "Invalid description".to_string(),
+    };
+
+    let name = std::env::current_dir()?
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let data_dir = Path::new("data");
+    let mut namespaces = HashMap::new();
+
+    if data_dir.exists() {
+        for entry in fs::read_dir(&data_dir)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                let namespace = entry.file_name().to_string_lossy().to_string();
+                let namespace_info = collect_namespace_info(&entry.path())?;
+                if namespace_info.has_content() {
+                    namespaces.insert(namespace, namespace_info);
+                }
+            }
+        }
+    }
+
+    Ok(DatapackInfo {
+        name,
+        description,
+        pack_format,
+        supported_formats,
+        namespaces,
+    })
 }
 
 impl NamespaceInfo {
@@ -51,22 +345,7 @@ impl NamespaceInfo {
             || self.loot_tables > 0
             || self.predicates > 0
             || self.tags > 0
-            || self.structures > 0
-            || self.banner_patterns > 0
-            || self.chat_types > 0
-            || self.damage_types > 0
-            || self.dimensions > 0
-            || self.dimension_types > 0
-            || self.enchantments > 0
-            || self.enchantment_providers > 0
-            || self.instruments > 0
-            || self.item_modifiers > 0
-            || self.jukebox_songs > 0
-            || self.painting_variants > 0
-            || self.trim_materials > 0
-            || self.trim_patterns > 0
-            || self.wolf_variants > 0
-            || self.has_worldgen
+            || self.world_gen
     }
 }
 
@@ -88,32 +367,25 @@ fn collect_namespace_info(namespace_path: &Path) -> Result<NamespaceInfo> {
             .to_string_lossy()
             .to_string();
 
+        if relative.starts_with("worldgen/") {
+            info.world_gen = true;
+        }
+
         match path.extension().and_then(|s| s.to_str()) {
             Some("mcfunction") => info.functions += 1,
-            Some("nbt") => info.structures += 1,
-            Some("json") => match relative.split('/').next() {
-                Some("advancements") => info.advancements += 1,
-                Some("recipes") => info.recipes += 1,
-                Some("loot_tables") => info.loot_tables += 1,
-                Some("predicates") => info.predicates += 1,
-                Some("tags") => info.tags += 1,
-                Some("banner_pattern") => info.banner_patterns += 1,
-                Some("chat_type") => info.chat_types += 1,
-                Some("damage_type") => info.damage_types += 1,
-                Some("dimension") => info.dimensions += 1,
-                Some("dimension_type") => info.dimension_types += 1,
-                Some("enchantment") => info.enchantments += 1,
-                Some("enchantment_provider") => info.enchantment_providers += 1,
-                Some("instrument") => info.instruments += 1,
-                Some("item_modifier") => info.item_modifiers += 1,
-                Some("jukebox_song") => info.jukebox_songs += 1,
-                Some("painting_variant") => info.painting_variants += 1,
-                Some("trim_material") => info.trim_materials += 1,
-                Some("trim_pattern") => info.trim_patterns += 1,
-                Some("wolf_variant") => info.wolf_variants += 1,
-                Some("worldgen") => info.has_worldgen = true,
-                _ => {}
-            },
+            Some("json") => {
+                if relative.starts_with("advancement/") {
+                    info.advancements += 1;
+                } else if relative.starts_with("recipe/") {
+                    info.recipes += 1;
+                } else if relative.starts_with("loot_table/") {
+                    info.loot_tables += 1;
+                } else if relative.starts_with("predicate/") {
+                    info.predicates += 1;
+                } else if relative.starts_with("tags/") {
+                    info.tags += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -161,9 +433,6 @@ fn display_info(info: &DatapackInfo) {
         if info.functions > 0 {
             println!("  {} Functions: {}", style("↪").dim(), info.functions);
         }
-        if info.structures > 0 {
-            println!("  {} Structures: {}", style("↪").dim(), info.structures);
-        }
         if info.advancements > 0 {
             println!("  {} Advancements: {}", style("↪").dim(), info.advancements);
         }
@@ -179,87 +448,38 @@ fn display_info(info: &DatapackInfo) {
         if info.tags > 0 {
             println!("  {} Tags: {}", style("↪").dim(), info.tags);
         }
-        if info.banner_patterns > 0 {
+
+        if info.world_gen {
             println!(
-                "  {} Banner Patterns: {}",
+                "  {} {}",
                 style("↪").dim(),
-                info.banner_patterns
+                style("This namespace alters world generation")
+                    .green()
+                    .italic()
             );
-        }
-        if info.chat_types > 0 {
-            println!("  {} Chat Types: {}", style("↪").dim(), info.chat_types);
-        }
-        if info.damage_types > 0 {
-            println!("  {} Damage Types: {}", style("↪").dim(), info.damage_types);
-        }
-        if info.dimensions > 0 {
-            println!("  {} Dimensions: {}", style("↪").dim(), info.dimensions);
-        }
-        if info.dimension_types > 0 {
-            println!(
-                "  {} Dimension Types: {}",
-                style("↪").dim(),
-                info.dimension_types
-            );
-        }
-        if info.enchantments > 0 {
-            println!("  {} Enchantments: {}", style("↪").dim(), info.enchantments);
-        }
-        if info.enchantment_providers > 0 {
-            println!(
-                "  {} Enchantment Providers: {}",
-                style("↪").dim(),
-                info.enchantment_providers
-            );
-        }
-        if info.instruments > 0 {
-            println!("  {} Instruments: {}", style("↪").dim(), info.instruments);
-        }
-        if info.item_modifiers > 0 {
-            println!(
-                "  {} Item Modifiers: {}",
-                style("↪").dim(),
-                info.item_modifiers
-            );
-        }
-        if info.jukebox_songs > 0 {
-            println!(
-                "  {} Jukebox Songs: {}",
-                style("↪").dim(),
-                info.jukebox_songs
-            );
-        }
-        if info.painting_variants > 0 {
-            println!(
-                "  {} Painting Variants: {}",
-                style("↪").dim(),
-                info.painting_variants
-            );
-        }
-        if info.trim_materials > 0 {
-            println!(
-                "  {} Trim Materials: {}",
-                style("↪").dim(),
-                info.trim_materials
-            );
-        }
-        if info.trim_patterns > 0 {
-            println!(
-                "  {} Trim Patterns: {}",
-                style("↪").dim(),
-                info.trim_patterns
-            );
-        }
-        if info.wolf_variants > 0 {
-            println!(
-                "  {} Wolf Variants: {}",
-                style("↪").dim(),
-                info.wolf_variants
-            );
-        }
-        if info.has_worldgen {
-            println!("  {} World Generation: {}", style("↪").dim(), "Yes");
         }
     }
     println!();
+}
+
+fn color_to_code(color: &str) -> &str {
+    match color {
+        "black" => "0",
+        "dark_blue" => "1",
+        "dark_green" => "2",
+        "dark_aqua" => "3",
+        "dark_red" => "4",
+        "dark_purple" => "5",
+        "gold" => "6",
+        "gray" => "7",
+        "dark_gray" => "8",
+        "blue" => "9",
+        "green" => "a",
+        "aqua" => "b",
+        "red" => "c",
+        "light_purple" => "d",
+        "yellow" => "e",
+        "white" => "f",
+        _ => "f",
+    }
 }
