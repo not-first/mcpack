@@ -41,17 +41,6 @@ pub fn is_valid_format(format: u8) -> bool {
     PACK_FORMAT_VERSIONS.contains_key(&format)
 }
 
-pub fn get_valid_formats_string() -> String {
-    PACK_FORMATS
-        .iter()
-        .map(|&f| {
-            let info = get_version_info(f).unwrap();
-            format!("{} ({})", f, info.versions.join(", "))
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 pub fn get_formats_string() -> String {
     PACK_FORMATS
         .iter()

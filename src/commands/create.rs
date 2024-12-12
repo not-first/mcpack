@@ -293,7 +293,7 @@ fn create_pack(pack_settings: PackSettings) -> Result<()> {
     // Handle icon if provided
     if let Some(icon_path) = pack_settings.icon_path {
         let icon_source = PathBuf::from(&icon_path);
-        if (!icon_source.exists()) {
+        if !icon_source.exists() {
             anyhow::bail!("Selected icon file does not exist: {}", icon_path);
         }
 

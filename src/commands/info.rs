@@ -17,6 +17,26 @@ struct DatapackInfo {
     pack_format: u8,
     supported_formats: Vec<u8>,
     namespaces: HashMap<String, NamespaceInfo>,
+    features: Vec<(String, bool)>,
+    filter: Option<FilterInfo>,
+    overlays: Vec<OverlayInfo>,
+}
+
+#[derive(Debug)]
+struct FilterInfo {
+    block: Vec<BlockPattern>,
+}
+
+#[derive(Debug)]
+struct BlockPattern {
+    namespace: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Debug)]
+struct OverlayInfo {
+    formats: Vec<u8>,
+    directory: String,
 }
 
 #[derive(Debug, Default)]
@@ -86,6 +106,144 @@ fn find_pack_mcmeta_in_zip(archive: &mut ZipArchive<fs::File>) -> Result<String>
     pack_mcmeta_content.context("pack.mcmeta not found in zip archive")
 }
 
+fn parse_description(desc: &Value) -> String {
+    match desc {
+        Value::String(s) => s.to_string(),
+        Value::Array(arr) => arr
+            .iter()
+            .map(|component| parse_text_component(component))
+            .collect::<String>(),
+        Value::Object(obj) => parse_text_component(&Value::Object(obj.clone())),
+        _ => "Invalid description".to_string(),
+    }
+}
+
+fn parse_text_component(component: &Value) -> String {
+    match component {
+        Value::String(s) => s.to_string(),
+        Value::Object(obj) => {
+            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
+                match color {
+                    "" => text.to_string(),
+                    c if c.starts_with('#') => style(text).color256(24).to_string(),
+                    "gray" => style(text).dim().to_string(),
+                    _ => style(text).color256(24).to_string(),
+                }
+            } else {
+                String::new()
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+fn parse_supported_formats(pack_format: u8, formats: Option<&Value>) -> Vec<u8> {
+    let mut supported_formats = vec![pack_format];
+
+    if let Some(formats) = formats {
+        match formats {
+            Value::Array(arr) => {
+                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+            }
+            Value::Object(obj) => {
+                if let (Some(min), Some(max)) = (
+                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
+                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
+                ) {
+                    supported_formats = (min as u8..=max as u8).collect();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    supported_formats
+}
+
+fn parse_features(mcmeta: &Value) -> Vec<(String, bool)> {
+    let valid_features = vec![
+        "minecraft:redstone_experiments",
+        "minecraft:minecart_improvements",
+        "minecraft:trade_rebalance",
+    ];
+
+    let mut features = Vec::new();
+    if let Some(features_arr) = mcmeta
+        .get("features")
+        .and_then(|f| f.get("enabled"))
+        .and_then(|e| e.as_array())
+    {
+        for feature in features_arr {
+            if let Some(feature_str) = feature.as_str() {
+                features.push((
+                    feature_str.to_string(),
+                    valid_features.contains(&feature_str),
+                ));
+            }
+        }
+    }
+    features
+}
+
+fn parse_filter(mcmeta: &Value) -> Option<FilterInfo> {
+    mcmeta
+        .get("filter")
+        .and_then(|filter_obj| {
+            filter_obj
+                .get("block")
+                .and_then(|b| b.as_array())
+                .map(|block| {
+                    let patterns = block
+                        .iter()
+                        .filter_map(|pattern| {
+                            pattern.as_object().map(|obj| BlockPattern {
+                                namespace: obj
+                                    .get("namespace")
+                                    .and_then(|n| n.as_str())
+                                    .map(String::from),
+                                path: obj.get("path").and_then(|p| p.as_str()).map(String::from),
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    FilterInfo { block: patterns }
+                })
+        })
+        .filter(|f| !f.block.is_empty())
+}
+
+fn parse_overlays(mcmeta: &Value) -> Vec<OverlayInfo> {
+    let mut overlays = Vec::new();
+    if let Some(entries) = mcmeta
+        .get("overlays")
+        .and_then(|o| o.get("entries"))
+        .and_then(|e| e.as_array())
+    {
+        for entry in entries {
+            if let Some(obj) = entry.as_object() {
+                let formats = match obj.get("formats") {
+                    Some(Value::Array(arr)) => arr
+                        .iter()
+                        .filter_map(|v| v.as_u64())
+                        .map(|v| v as u8)
+                        .collect(),
+                    Some(Value::Number(n)) => vec![n.as_u64().unwrap_or_default() as u8],
+                    _ => Vec::new(),
+                };
+                let directory = obj
+                    .get("directory")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !formats.is_empty() && !directory.is_empty() {
+                    overlays.push(OverlayInfo { formats, directory });
+                }
+            }
+        }
+    }
+    overlays
+}
+
 fn collect_info_from_zip(
     pack_mcmeta_content: &str,
     archive: &mut ZipArchive<fs::File>,
@@ -104,71 +262,18 @@ fn collect_info_from_zip(
         .as_u64()
         .context("Invalid pack_format")? as u8;
 
-    let mut supported_formats = vec![pack_format];
-
-    if let Some(formats) = pack.get("supported_formats") {
-        match formats {
-            Value::Array(arr) => {
-                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
-            }
-            Value::Object(obj) => {
-                if let (Some(min), Some(max)) = (
-                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
-                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
-                ) {
-                    supported_formats = (min as u8..=max as u8).collect();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let description = match pack.get("description") {
-        Some(Value::String(s)) => s.to_string(),
-        Some(Value::Array(arr)) => {
-            arr.iter()
-                .map(|component| {
-                    match component {
-                        Value::String(s) => s.to_string(),
-                        Value::Object(obj) => {
-                            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
-                                match color {
-                                    "" => text.to_string(),
-                                    c if c.starts_with('#') => style(text).color256(24).to_string(),
-                                    "gray" => style(text).dim().to_string(),
-                                    _ => style(text).color256(24).to_string(), // Default to a nice color if we don't recognize it
-                                }
-                            } else {
-                                String::new()
-                            }
-                        }
-                        _ => String::new(),
-                    }
-                })
-                .collect::<String>()
-        }
-        Some(Value::Object(obj)) => {
-            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
-                match color {
-                    "" => text.to_string(),
-                    c if c.starts_with('#') => style(text).color256(24).to_string(),
-                    "gray" => style(text).dim().to_string(),
-                    _ => style(text).color256(24).to_string(),
-                }
-            } else {
-                "Invalid description format".to_string()
-            }
-        }
-        _ => "Invalid description".to_string(),
-    };
-
+    let supported_formats = parse_supported_formats(pack_format, pack.get("supported_formats"));
+    let description =
+        parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
     let name = Path::new(zip_path)
         .file_stem()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
+
+    let features = parse_features(&mcmeta);
+    let filter = parse_filter(&mcmeta);
+    let overlays = parse_overlays(&mcmeta);
 
     let mut namespaces = HashMap::new();
     let mut current_namespace = String::new();
@@ -229,6 +334,9 @@ fn collect_info_from_zip(
         pack_format,
         supported_formats,
         namespaces,
+        features,
+        filter,
+        overlays,
     })
 }
 
@@ -246,71 +354,18 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
         .as_u64()
         .context("Invalid pack_format")? as u8;
 
-    let mut supported_formats = vec![pack_format];
-
-    if let Some(formats) = pack.get("supported_formats") {
-        match formats {
-            Value::Array(arr) => {
-                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
-            }
-            Value::Object(obj) => {
-                if let (Some(min), Some(max)) = (
-                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
-                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
-                ) {
-                    supported_formats = (min as u8..=max as u8).collect();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let description = match pack.get("description") {
-        Some(Value::String(s)) => s.to_string(),
-        Some(Value::Array(arr)) => {
-            arr.iter()
-                .map(|component| {
-                    match component {
-                        Value::String(s) => s.to_string(),
-                        Value::Object(obj) => {
-                            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
-                                match color {
-                                    "" => text.to_string(),
-                                    c if c.starts_with('#') => style(text).color256(24).to_string(),
-                                    "gray" => style(text).dim().to_string(),
-                                    _ => style(text).color256(24).to_string(), // Default to a nice color if we don't recognize it
-                                }
-                            } else {
-                                String::new()
-                            }
-                        }
-                        _ => String::new(),
-                    }
-                })
-                .collect::<String>()
-        }
-        Some(Value::Object(obj)) => {
-            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                let color = obj.get("color").and_then(|c| c.as_str()).unwrap_or("");
-                match color {
-                    "" => text.to_string(),
-                    c if c.starts_with('#') => style(text).color256(24).to_string(),
-                    "gray" => style(text).dim().to_string(),
-                    _ => style(text).color256(24).to_string(),
-                }
-            } else {
-                "Invalid description format".to_string()
-            }
-        }
-        _ => "Invalid description".to_string(),
-    };
-
+    let supported_formats = parse_supported_formats(pack_format, pack.get("supported_formats"));
+    let description =
+        parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
     let name = std::env::current_dir()?
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
+
+    let features = parse_features(&mcmeta);
+    let filter = parse_filter(&mcmeta);
+    let overlays = parse_overlays(&mcmeta);
 
     let data_dir = Path::new("data");
     let mut namespaces = HashMap::new();
@@ -334,6 +389,9 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
         pack_format,
         supported_formats,
         namespaces,
+        features,
+        filter,
+        overlays,
     })
 }
 
@@ -412,20 +470,82 @@ fn display_info(info: &DatapackInfo) {
 
     println!(
         "\n{} Pack Format{}: {} ({})",
-        style("📝").green(),
-        if valid_formats.len() > 1 { "s" } else { "" },
-        valid_formats
+        "📝",
+        if info.supported_formats.len() > 1 {
+            "s"
+        } else {
+            ""
+        },
+        info.supported_formats
             .iter()
-            .map(|f| f.to_string())
+            .map(|f| {
+                if *f == info.pack_format {
+                    style(f.to_string()).green().bold().to_string()
+                } else if pack_formats::is_valid_format(*f) {
+                    f.to_string()
+                } else {
+                    style(f.to_string()).red().to_string()
+                }
+            })
             .collect::<Vec<_>>()
             .join(", "),
         style(version_range).yellow()
     );
 
+    if !info.features.is_empty() {
+        println!("\n{} {}", "🔧", style("Enabled Features:").yellow().bold());
+        for (feature, is_valid) in &info.features {
+            let feature_style = if *is_valid {
+                style(feature)
+            } else {
+                style(feature).red()
+            };
+            println!("  {} {}", style("↪").dim(), feature_style);
+        }
+    }
+
+    if let Some(filter) = &info.filter {
+        println!(
+            "\n{} {}",
+            style("🛠️").magenta(),
+            style("File Filters:").magenta().bold()
+        );
+        for pattern in &filter.block {
+            let mut filter_desc = String::new();
+            if let Some(ns) = &pattern.namespace {
+                filter_desc.push_str(&format!("namespace: {}", ns));
+            }
+            if let Some(path) = &pattern.path {
+                if !filter_desc.is_empty() {
+                    filter_desc.push_str(", ");
+                }
+                filter_desc.push_str(&format!("path: {}", path));
+            }
+            println!("  {} {}", style("↪").dim(), filter_desc);
+        }
+    }
+
+    if !info.overlays.is_empty() {
+        println!("\n{} {}", "📎", style("Overlays:").magenta().bold());
+        for overlay in &info.overlays {
+            println!(
+                "  {} {} (formats: {})",
+                style("↪").dim(),
+                overlay.directory,
+                overlay
+                    .formats
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+
     for (namespace, info) in &info.namespaces {
         println!(
             "\n{} {} {}",
-            style("📂").blue(),
+            "📂",
             style("Namespace:").blue().bold(),
             style(namespace).white()
         );
@@ -460,26 +580,4 @@ fn display_info(info: &DatapackInfo) {
         }
     }
     println!();
-}
-
-fn color_to_code(color: &str) -> &str {
-    match color {
-        "black" => "0",
-        "dark_blue" => "1",
-        "dark_green" => "2",
-        "dark_aqua" => "3",
-        "dark_red" => "4",
-        "dark_purple" => "5",
-        "gold" => "6",
-        "gray" => "7",
-        "dark_gray" => "8",
-        "blue" => "9",
-        "green" => "a",
-        "aqua" => "b",
-        "red" => "c",
-        "light_purple" => "d",
-        "yellow" => "e",
-        "white" => "f",
-        _ => "f",
-    }
 }
