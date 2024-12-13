@@ -39,13 +39,9 @@ It shows name, description, minecraft version (with pack format). It shows the n
 
 ---
 
-`pack` command to pack the datapack into a distributable zip file.
+`zip` command to pack the datapack into a distributable zip file.
 
-- Zip with current settings (y/N)
-
-- If previous prompt denied, define pack format to zip for. Use the same pack format select as above.
-
-It could have to option to zip for a certain pack format and shows an output information of what it packed.
+- folder name (optional, only if not in a datapack folder)
 
 ---
 Features:

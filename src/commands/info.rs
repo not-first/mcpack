@@ -51,7 +51,13 @@ struct NamespaceInfo {
 }
 
 pub fn run(command: &crate::cli::Commands) -> Result<()> {
-    if let crate::cli::Commands::Info { path } = command {
+    if let crate::cli::Commands::Info {
+        path,
+        compact,
+        pack_info,
+        namespaces,
+    } = command
+    {
         match path {
             Some(zip_path) => {
                 // Construct the full zip path
@@ -72,7 +78,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
 
                 let pack_mcmeta_content = find_pack_mcmeta_in_zip(&mut archive)?;
                 let info = collect_info_from_zip(&pack_mcmeta_content, &mut archive, &full_path)?;
-                display_info(&info);
+                display_info(&info, *compact, *pack_info, *namespaces);
             }
             None => {
                 let pack_mcmeta = PathBuf::from("pack.mcmeta");
@@ -80,7 +86,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                     anyhow::bail!("Not in a datapack directory (pack.mcmeta not found)");
                 }
                 let info = collect_info(&pack_mcmeta)?;
-                display_info(&info);
+                display_info(&info, *compact, *pack_info, *namespaces);
             }
         }
     }
@@ -451,7 +457,8 @@ fn collect_namespace_info(namespace_path: &Path) -> Result<NamespaceInfo> {
     Ok(info)
 }
 
-fn display_info(info: &DatapackInfo) {
+fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_only: bool) {
+    // Always show basic info
     println!(
         "\n{} {}",
         style("📦").cyan(),
@@ -459,6 +466,7 @@ fn display_info(info: &DatapackInfo) {
     );
     println!("{}", style(&info.description).italic());
 
+    // Always show pack format info
     let valid_formats: Vec<u8> = info
         .supported_formats
         .iter()
@@ -492,91 +500,103 @@ fn display_info(info: &DatapackInfo) {
         style(version_range).yellow()
     );
 
-    if !info.features.is_empty() {
-        println!("\n{} {}", "🔧", style("Enabled Features:").yellow().bold());
-        for (feature, is_valid) in &info.features {
-            let feature_style = if *is_valid {
-                style(feature)
-            } else {
-                style(feature).red()
-            };
-            println!("  {} {}", style("↪").dim(), feature_style);
-        }
+    // Return early if compact mode
+    if compact {
+        println!();
+        return;
     }
 
-    if let Some(filter) = &info.filter {
-        println!(
-            "\n{} {}",
-            style("🛠️").magenta(),
-            style("File Filters:").magenta().bold()
-        );
-        for pattern in &filter.block {
-            let mut filter_desc = String::new();
-            if let Some(ns) = &pattern.namespace {
-                filter_desc.push_str(&format!("namespace: {}", ns));
+    // Show pack.mcmeta related information if pack_info is true or neither flag is set
+    if !namespaces_only {
+        if !info.features.is_empty() {
+            println!("\n{} {}", "🔧", style("Enabled Features:").yellow().bold());
+            for (feature, is_valid) in &info.features {
+                let feature_style = if *is_valid {
+                    style(feature)
+                } else {
+                    style(feature).red()
+                };
+                println!("  {} {}", style("↪").dim(), feature_style);
             }
-            if let Some(path) = &pattern.path {
-                if !filter_desc.is_empty() {
-                    filter_desc.push_str(", ");
+        }
+
+        if let Some(filter) = &info.filter {
+            println!(
+                "\n{} {}",
+                style("🛠️").magenta(),
+                style("File Filters:").magenta().bold()
+            );
+            for pattern in &filter.block {
+                let mut filter_desc = String::new();
+                if let Some(ns) = &pattern.namespace {
+                    filter_desc.push_str(&format!("namespace: {}", ns));
                 }
-                filter_desc.push_str(&format!("path: {}", path));
+                if let Some(path) = &pattern.path {
+                    if !filter_desc.is_empty() {
+                        filter_desc.push_str(", ");
+                    }
+                    filter_desc.push_str(&format!("path: {}", path));
+                }
+                println!("  {} {}", style("↪").dim(), filter_desc);
             }
-            println!("  {} {}", style("↪").dim(), filter_desc);
+        }
+
+        if !info.overlays.is_empty() {
+            println!("\n{} {}", "📎", style("Overlays:").magenta().bold());
+            for overlay in &info.overlays {
+                println!(
+                    "  {} {} (formats: {})",
+                    style("↪").dim(),
+                    overlay.directory,
+                    overlay
+                        .formats
+                        .iter()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
         }
     }
 
-    if !info.overlays.is_empty() {
-        println!("\n{} {}", "📎", style("Overlays:").magenta().bold());
-        for overlay in &info.overlays {
+    // Show namespace information if namespaces_only is true or neither flag is set
+    if !pack_info {
+        for (namespace, info) in &info.namespaces {
             println!(
-                "  {} {} (formats: {})",
-                style("↪").dim(),
-                overlay.directory,
-                overlay
-                    .formats
-                    .iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "\n{} {} {}",
+                "📂",
+                style("Namespace:").blue().bold(),
+                style(namespace).white()
             );
-        }
-    }
 
-    for (namespace, info) in &info.namespaces {
-        println!(
-            "\n{} {} {}",
-            "📂",
-            style("Namespace:").blue().bold(),
-            style(namespace).white()
-        );
+            if info.functions > 0 {
+                println!("  {} Functions: {}", style("↪").dim(), info.functions);
+            }
+            if info.advancements > 0 {
+                println!("  {} Advancements: {}", style("↪").dim(), info.advancements);
+            }
+            if info.recipes > 0 {
+                println!("  {} Recipes: {}", style("↪").dim(), info.recipes);
+            }
+            if info.loot_tables > 0 {
+                println!("  {} Loot Tables: {}", style("↪").dim(), info.loot_tables);
+            }
+            if info.predicates > 0 {
+                println!("  {} Predicates: {}", style("↪").dim(), info.predicates);
+            }
+            if info.tags > 0 {
+                println!("  {} Tags: {}", style("↪").dim(), info.tags);
+            }
 
-        if info.functions > 0 {
-            println!("  {} Functions: {}", style("↪").dim(), info.functions);
-        }
-        if info.advancements > 0 {
-            println!("  {} Advancements: {}", style("↪").dim(), info.advancements);
-        }
-        if info.recipes > 0 {
-            println!("  {} Recipes: {}", style("↪").dim(), info.recipes);
-        }
-        if info.loot_tables > 0 {
-            println!("  {} Loot Tables: {}", style("↪").dim(), info.loot_tables);
-        }
-        if info.predicates > 0 {
-            println!("  {} Predicates: {}", style("↪").dim(), info.predicates);
-        }
-        if info.tags > 0 {
-            println!("  {} Tags: {}", style("↪").dim(), info.tags);
-        }
-
-        if info.world_gen {
-            println!(
-                "  {} {}",
-                style("↪").dim(),
-                style("This namespace alters world generation")
-                    .green()
-                    .italic()
-            );
+            if info.world_gen {
+                println!(
+                    "  {} {}",
+                    style("↪").dim(),
+                    style("This namespace alters world generation")
+                        .green()
+                        .italic()
+                );
+            }
         }
     }
     println!();

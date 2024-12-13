@@ -20,6 +20,7 @@ fn run() -> Result<()> {
     match &cli.command {
         Commands::Create { .. } => commands::create::run(&cli.command)?,
         Commands::Info { .. } => commands::info::run(&cli.command)?,
+        Commands::Zip { .. } => commands::zip::run(&cli.command)?,
     }
 
     Ok(())

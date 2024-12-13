@@ -45,8 +45,24 @@ enum SupportedFormatsType {
     },
 }
 
+struct CreateArgs {
+    name: Option<String>,
+    description: Option<String>,
+    icon_path: Option<String>,
+    pack_formats: Option<Vec<u8>>, // Changed from Option<String>
+    include_minecraft: bool,
+    minecraft_tags: Option<Vec<String>>,
+    custom_namespace: Option<String>,
+    namespace_folders: Option<Vec<String>>, // Changed from Option<String>
+    output_dir: Option<String>,             // Add this field
+    skip_icon: bool,
+    skip_starter_files: bool,
+    skip_minecraft_tags: bool,
+}
+
 pub fn run(args: &Commands) -> Result<()> {
     let Commands::Create {
+        force,
         name,
         description,
         icon,
@@ -56,6 +72,10 @@ pub fn run(args: &Commands) -> Result<()> {
         minecraft_tick,
         namespace,
         folders,
+        output_dir, // Extract output_dir from command args
+        skip_icon,
+        skip_starter_files,
+        skip_minecraft_tags,
     } = args
     else {
         unreachable!("create::run should only be called with Create command");
@@ -97,22 +117,15 @@ pub fn run(args: &Commands) -> Result<()> {
             },
             custom_namespace: namespace.clone(),
             namespace_folders: folders.clone(), // Now we can use it directly
+            output_dir: output_dir.clone(),     // Pass output_dir to CreateArgs
+            skip_icon: *skip_icon,
+            skip_starter_files: *skip_starter_files,
+            skip_minecraft_tags: *skip_minecraft_tags,
         },
     )?;
 
-    create_pack(settings)?;
+    create_pack(settings, *force)?;
     Ok(())
-}
-
-struct CreateArgs {
-    name: Option<String>,
-    description: Option<String>,
-    icon_path: Option<String>,
-    pack_formats: Option<Vec<u8>>, // Changed from Option<String>
-    include_minecraft: bool,
-    minecraft_tags: Option<Vec<String>>,
-    custom_namespace: Option<String>,
-    namespace_folders: Option<Vec<String>>, // Changed from Option<String>
 }
 
 fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSettings> {
@@ -125,9 +138,13 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
             .context("Failed to get datapack name")?,
     };
 
-    let directory = std::env::current_dir()
-        .context("Failed to get current directory")?
-        .join(name.clone());
+    let base_dir = if let Some(dir) = &args.output_dir {
+        PathBuf::from(dir)
+    } else {
+        std::env::current_dir().context("Failed to get current directory")?
+    };
+
+    let directory = base_dir.join(name.clone());
 
     let description = match args.description {
         Some(description) => description,
@@ -138,24 +155,28 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
             .context("Failed to get datapack description")?,
     };
 
-    let icon_path = match args.icon_path {
-        Some(icon_path) => Some(icon_path),
-        None => {
-            let pick_icon = Confirm::with_theme(theme)
-                .with_prompt("Do you want to add a pack icon?")
-                .default(false)
-                .interact()
-                .context("Failed to get icon confirmation")?;
+    let icon_path = if args.skip_icon {
+        None
+    } else {
+        match args.icon_path {
+            Some(icon_path) => Some(icon_path),
+            None => {
+                let pick_icon = Confirm::with_theme(theme)
+                    .with_prompt("Do you want to add a pack icon?")
+                    .default(false)
+                    .interact()
+                    .context("Failed to get icon confirmation")?;
 
-            if pick_icon {
-                let file = FileDialog::new()
-                    .add_filter("PNG Image", &["png"])
-                    .set_title("Select pack icon")
-                    .pick_file();
+                if pick_icon {
+                    let file = FileDialog::new()
+                        .add_filter("PNG Image", &["png"])
+                        .set_title("Select pack icon")
+                        .pick_file();
 
-                file.map(|path| path.to_string_lossy().to_string())
-            } else {
-                None
+                    file.map(|path| path.to_string_lossy().to_string())
+                } else {
+                    None
+                }
             }
         }
     };
@@ -192,28 +213,32 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
     // Datapack settings
     let include_minecraft_namespace = args.include_minecraft
         || Confirm::with_theme(theme)
-            .with_prompt("Include minecraft namespace files?")
+            .with_prompt("Include minecraft namespace?")
             .default(false)
             .interact()
             .context("Failed to get minecraft namespace confirmation")?;
 
-    let minecraft_tags = match args.minecraft_tags {
-        Some(tags) => tags,
-        None => {
-            if include_minecraft_namespace {
-                let tag_options = vec!["load.mcfunction", "tick.mcfunction"];
-                let selected_tags = MultiSelect::with_theme(theme)
-                    .with_prompt("Select minecraft tags to include")
-                    .items(&tag_options)
-                    .interact()
-                    .context("Failed to select minecraft tags")?;
+    let minecraft_tags = if args.skip_minecraft_tags {
+        Vec::new()
+    } else {
+        match args.minecraft_tags {
+            Some(tags) => tags,
+            None => {
+                if include_minecraft_namespace {
+                    let tag_options = vec!["load.mcfunction", "tick.mcfunction"];
+                    let selected_tags = MultiSelect::with_theme(theme)
+                        .with_prompt("Select minecraft tags to include")
+                        .items(&tag_options)
+                        .interact()
+                        .context("Failed to select minecraft tags")?;
 
-                selected_tags
-                    .iter()
-                    .map(|&i| tag_options[i].to_string())
-                    .collect()
-            } else {
-                Vec::new()
+                    selected_tags
+                        .iter()
+                        .map(|&i| tag_options[i].to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
             }
         }
     };
@@ -236,31 +261,35 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         }
     };
 
-    let custom_namespace_folders = match args.namespace_folders {
-        Some(namespace_folders) => namespace_folders,
-        None => {
-            if custom_namespace.is_some() {
-                let folder_options = vec![
-                    "function",
-                    "advancement",
-                    "tags",
-                    "recipe",
-                    "loot_table",
-                    "predicate",
-                ];
+    let custom_namespace_folders = if args.skip_starter_files {
+        Vec::new()
+    } else {
+        match args.namespace_folders {
+            Some(namespace_folders) => namespace_folders,
+            None => {
+                if custom_namespace.is_some() {
+                    let folder_options = vec![
+                        "function",
+                        "advancement",
+                        "tags",
+                        "recipe",
+                        "loot_table",
+                        "predicate",
+                    ];
 
-                let selected_folders = MultiSelect::with_theme(theme)
-                    .with_prompt("Select starter folders for custom namespace")
-                    .items(&folder_options)
-                    .interact()
-                    .context("Failed to select starter folders")?;
+                    let selected_folders = MultiSelect::with_theme(theme)
+                        .with_prompt("Select starter folders for custom namespace")
+                        .items(&folder_options)
+                        .interact()
+                        .context("Failed to select starter folders")?;
 
-                selected_folders
-                    .iter()
-                    .map(|&i| folder_options[i].to_string())
-                    .collect()
-            } else {
-                Vec::new()
+                    selected_folders
+                        .iter()
+                        .map(|&i| folder_options[i].to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
             }
         }
     };
@@ -278,13 +307,37 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
     })
 }
 
-fn create_pack(pack_settings: PackSettings) -> Result<()> {
+fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
+    if pack_settings.directory.exists() && !force {
+        let confirm = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!(
+                "Folder {} already exists. Overwrite?",
+                pack_settings
+                    .directory
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+            ))
+            .default(false)
+            .interact()?;
+
+        if !confirm {
+            println!(
+                "{} {}",
+                style("✗").red(),
+                style("Operation cancelled").bold()
+            );
+            return Ok(());
+        }
+    }
+
     if pack_settings.directory.exists() {
-        anyhow::bail!(
-            "A datapack named '{}' already exists at {}",
-            pack_settings.name,
-            pack_settings.directory.display()
-        );
+        fs::remove_dir_all(&pack_settings.directory).with_context(|| {
+            format!(
+                "Failed to remove existing directory: {}",
+                pack_settings.directory.display()
+            )
+        })?;
     }
 
     std::fs::create_dir_all(&pack_settings.directory)
