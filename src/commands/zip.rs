@@ -27,13 +27,13 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             (None, None) => std::env::current_dir()?,
         };
 
-        // Verify it's a datapack directory by checking for pack.mcmeta
+        // verify it's a datapack directory by checking for pack.mcmeta
         let mcmeta_path = datapack_path.join("pack.mcmeta");
         if !mcmeta_path.exists() {
             anyhow::bail!("Not a datapack directory (pack.mcmeta not found)");
         }
 
-        // Read pack.mcmeta to get format version and create zip name
+        // read pack.mcmeta to get format version and create zip name
         let mcmeta = fs::read_to_string(&mcmeta_path)
             .with_context(|| format!("Failed to read {}", mcmeta_path.display()))?;
         let mcmeta: Value = serde_json::from_str(&mcmeta)
@@ -45,13 +45,13 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             .and_then(|f| f.as_u64())
             .context("Invalid pack.mcmeta: missing pack_format")? as u8;
 
-        // Create zip file name from datapack name and Minecraft version
+        // create zip file name from datapack name and Minecraft version
         let datapack_name = datapack_path
             .file_name()
             .context("Invalid datapack path")?
             .to_string_lossy();
 
-        // Determine output file name
+        // determine output file name
         let zip_name = if let Some(custom_name) = name {
             if custom_name.ends_with(".zip") {
                 custom_name.to_string()
@@ -68,7 +68,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             )
         };
 
-        // Determine output directory
+        // determine output directory
         let output_dir = if let Some(dir) = output_dir {
             PathBuf::from(dir)
         } else if path.is_some() {
@@ -79,7 +79,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
 
         let zip_path = output_dir.join(&zip_name);
 
-        // Check if file exists and prompt for overwrite
+        // check if file exists and prompt for overwrite
         if zip_path.exists() && !force {
             let confirm = Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt(format!(
@@ -99,7 +99,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             }
         }
 
-        // Count total files to process
+        // count total files to process
         let total_files = count_files(&datapack_path)?;
         let pb = ProgressBar::new(total_files);
         pb.set_style(
@@ -109,7 +109,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         );
         pb.set_message("Creating zip archive...");
 
-        // Create the zip file
+        // create the zip file
         let zip_file = File::create(&zip_path)
             .with_context(|| format!("Failed to create zip file: {}", zip_path.display()))?;
         let mut zip = ZipWriter::new(zip_file);
@@ -117,7 +117,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o755);
 
-        // Add files to zip with progress
+        // add files to zip with progress
         add_directory_to_zip(&mut zip, &datapack_path, &datapack_path, options, &pb)?;
 
         zip.finish()?;

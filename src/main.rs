@@ -1,5 +1,6 @@
 mod cli;
 mod commands;
+mod elements;
 mod pack_formats;
 
 use anyhow::Result;
@@ -17,10 +18,12 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // run the appropriate command
     match &cli.command {
         Commands::Create { .. } => commands::create::run(&cli.command)?,
         Commands::Info { .. } => commands::info::run(&cli.command)?,
         Commands::Zip { .. } => commands::zip::run(&cli.command)?,
+        Commands::Add { .. } => commands::add::run(&cli.command)?,
     }
 
     Ok(())

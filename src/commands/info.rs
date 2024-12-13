@@ -60,13 +60,13 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
     {
         match path {
             Some(zip_path) => {
-                // Construct the full zip path
+                // construct the full zip path
                 let mut full_path = String::from(zip_path);
                 if !full_path.ends_with(".zip") {
                     full_path.push_str(".zip");
                 }
 
-                // Check if the file exists
+                // check if the file exists
                 if !std::path::Path::new(&full_path).exists() {
                     anyhow::bail!("Zip file not found: {}", full_path);
                 }
@@ -458,7 +458,7 @@ fn collect_namespace_info(namespace_path: &Path) -> Result<NamespaceInfo> {
 }
 
 fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_only: bool) {
-    // Always show basic info
+    // always show basic info
     println!(
         "\n{} {}",
         style("📦").cyan(),
@@ -466,7 +466,7 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
     );
     println!("{}", style(&info.description).italic());
 
-    // Always show pack format info
+    // always show pack format info
     let valid_formats: Vec<u8> = info
         .supported_formats
         .iter()
@@ -500,13 +500,13 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
         style(version_range).yellow()
     );
 
-    // Return early if compact mode
+    // return early if compact mode
     if compact {
         println!();
         return;
     }
 
-    // Show pack.mcmeta related information if pack_info is true or neither flag is set
+    // show pack.mcmeta related information if pack_info is true or neither flag is set
     if !namespaces_only {
         if !info.features.is_empty() {
             println!("\n{} {}", "🔧", style("Enabled Features:").yellow().bold());
@@ -559,7 +559,7 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
         }
     }
 
-    // Show namespace information if namespaces_only is true or neither flag is set
+    // show namespace information if namespaces_only is true or neither flag is set
     if !pack_info {
         for (namespace, info) in &info.namespaces {
             println!(

@@ -1,4 +1,5 @@
 use crate::cli::Commands;
+use crate::elements::{get_sample_content, ELEMENT_TYPES};
 use crate::pack_formats::{self, PACK_FORMATS};
 use anyhow::{Context, Result};
 use console::style;
@@ -49,12 +50,12 @@ struct CreateArgs {
     name: Option<String>,
     description: Option<String>,
     icon_path: Option<String>,
-    pack_formats: Option<Vec<u8>>, // Changed from Option<String>
+    pack_formats: Option<Vec<u8>>,
     include_minecraft: bool,
     minecraft_tags: Option<Vec<String>>,
     custom_namespace: Option<String>,
-    namespace_folders: Option<Vec<String>>, // Changed from Option<String>
-    output_dir: Option<String>,             // Add this field
+    namespace_folders: Option<Vec<String>>,
+    output_dir: Option<String>,
     skip_icon: bool,
     skip_starter_files: bool,
     skip_minecraft_tags: bool,
@@ -72,7 +73,7 @@ pub fn run(args: &Commands) -> Result<()> {
         minecraft_tick,
         namespace,
         folders,
-        output_dir, // Extract output_dir from command args
+        output_dir,
         skip_icon,
         skip_starter_files,
         skip_minecraft_tags,
@@ -81,7 +82,7 @@ pub fn run(args: &Commands) -> Result<()> {
         unreachable!("create::run should only be called with Create command");
     };
 
-    // Only need to validate format arguments
+    // only need to validate format arguments
     if let Some(formats) = format {
         for &f in formats {
             if !pack_formats::is_valid_format(f) {
@@ -101,7 +102,7 @@ pub fn run(args: &Commands) -> Result<()> {
             name: name.clone(),
             description: description.clone(),
             icon_path: icon.clone(),
-            pack_formats: format.clone(), // Now we can use it directly
+            pack_formats: format.clone(),
             include_minecraft: *minecraft,
             minecraft_tags: if *minecraft {
                 let mut tags = Vec::new();
@@ -116,8 +117,8 @@ pub fn run(args: &Commands) -> Result<()> {
                 None
             },
             custom_namespace: namespace.clone(),
-            namespace_folders: folders.clone(), // Now we can use it directly
-            output_dir: output_dir.clone(),     // Pass output_dir to CreateArgs
+            namespace_folders: folders.clone(),
+            output_dir: output_dir.clone(),
             skip_icon: *skip_icon,
             skip_starter_files: *skip_starter_files,
             skip_minecraft_tags: *skip_minecraft_tags,
@@ -181,9 +182,9 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         }
     };
 
-    // Pack format selection
+    // pack format selection
     let pack_formats = match args.pack_formats {
-        Some(pack_formats) => pack_formats, // Validation already done
+        Some(pack_formats) => pack_formats,
         None => {
             let format_strings: Vec<String> = PACK_FORMATS
                 .iter()
@@ -210,7 +211,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         }
     };
 
-    // Datapack settings
+    // datapack settings
     let include_minecraft_namespace = args.include_minecraft
         || Confirm::with_theme(theme)
             .with_prompt("Include minecraft namespace?")
@@ -243,29 +244,43 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         }
     };
 
-    // Custom namespace prompt
+    // custom namespace prompt
     let custom_namespace = match args.custom_namespace {
         Some(custom_namespace) => Some(custom_namespace),
-        None => {
+        None => loop {
             let input: String = Input::with_theme(theme)
                 .with_prompt("Enter custom namespace")
-                .allow_empty(true)
                 .interact_text()
                 .context("Failed to get custom namespace")?;
 
-            if input.trim().is_empty() {
-                None
+            if !input.trim().is_empty() {
+                break Some(input);
             } else {
-                Some(input)
+                println!("Namespace cannot be empty. Please enter a valid namespace.");
             }
-        }
+        },
     };
 
     let custom_namespace_folders = if args.skip_starter_files {
         Vec::new()
     } else {
         match args.namespace_folders {
-            Some(namespace_folders) => namespace_folders,
+            Some(namespace_folders) => {
+                // Validate each folder name
+                for folder in &namespace_folders {
+                    if !ELEMENT_TYPES.iter().any(|(name, _)| name == folder) {
+                        anyhow::bail!(
+                            "Invalid starter folder name: '{}'. Valid options are: {:?}",
+                            folder,
+                            ELEMENT_TYPES
+                                .iter()
+                                .map(|(name, _)| name)
+                                .collect::<Vec<_>>()
+                        );
+                    }
+                }
+                namespace_folders
+            }
             None => {
                 if custom_namespace.is_some() {
                     let folder_options = vec![
@@ -283,10 +298,26 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
                         .interact()
                         .context("Failed to select starter folders")?;
 
-                    selected_folders
+                    let folders = selected_folders
                         .iter()
                         .map(|&i| folder_options[i].to_string())
-                        .collect()
+                        .collect::<Vec<_>>();
+
+                    // Validate selected folders
+                    for folder in &folders {
+                        if !ELEMENT_TYPES.iter().any(|(name, _)| name == folder) {
+                            anyhow::bail!(
+                                "Invalid starter folder name: '{}'. Valid options are: {:?}",
+                                folder,
+                                ELEMENT_TYPES
+                                    .iter()
+                                    .map(|(name, _)| name)
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                    }
+
+                    folders
                 } else {
                     Vec::new()
                 }
@@ -343,14 +374,14 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
     std::fs::create_dir_all(&pack_settings.directory)
         .context("Failed to create datapack directory")?;
 
-    // Handle icon if provided
+    // handle icon if provided
     if let Some(icon_path) = pack_settings.icon_path {
         let icon_source = PathBuf::from(&icon_path);
         if !icon_source.exists() {
             anyhow::bail!("Selected icon file does not exist: {}", icon_path);
         }
 
-        // Verify it's a PNG file
+        // verify it's a PNG file
         let extension = icon_source
             .extension()
             .and_then(|ext| ext.to_str())
@@ -360,7 +391,7 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
             anyhow::bail!("Icon must be a PNG file");
         }
 
-        // Copy the icon to pack.png in the datapack directory
+        // copy the icon to pack.png in the datapack directory
         fs::copy(&icon_source, pack_settings.directory.join("pack.png"))
             .context("Failed to copy icon file")?;
     }
@@ -371,10 +402,10 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
         let min = *pack_settings.pack_formats.iter().min().unwrap();
         let max = *pack_settings.pack_formats.iter().max().unwrap();
 
-        // Only get valid formats in the range
+        // only get valid formats in the range
         let formats_in_range = pack_formats::get_formats_in_range(min, max);
 
-        // Check if selected formats exactly match the valid formats in range
+        // check if selected formats exactly match the valid formats in range
         let selected_set: std::collections::HashSet<_> =
             pack_settings.pack_formats.iter().collect();
         let range_set: std::collections::HashSet<_> = formats_in_range.iter().collect();
@@ -410,7 +441,7 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
     )
     .context("Failed to write pack.mcmeta")?;
 
-    // Create data folder structure
+    // create data folder structure
     let data_dir = pack_settings.directory.join("data");
     fs::create_dir_all(&data_dir).context("Failed to create data directory")?;
 
@@ -419,7 +450,7 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
         fs::create_dir_all(&minecraft_tags_dir)
             .context("Failed to create minecraft tags directory")?;
 
-        // Create selected tag files
+        // create selected tag files
         for tag in &pack_settings.minecraft_tags {
             let tag_name = tag.strip_suffix(".mcfunction").unwrap_or(tag);
             let tag_content = serde_json::json!({
@@ -433,55 +464,43 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
         }
     }
 
-    // Handle custom namespace if provided
+    // handle custom namespace if provided
     if let Some(namespace) = &pack_settings.custom_namespace {
         let namespace_dir = data_dir.join(namespace);
         fs::create_dir_all(&namespace_dir)
             .with_context(|| format!("Failed to create namespace directory for {}", namespace))?;
 
-        // Create selected folders and their starter files
+        // create selected folders and their starter files
         for folder in &pack_settings.custom_namespace_folders {
             let folder_path = namespace_dir.join(folder);
             fs::create_dir_all(&folder_path)
                 .with_context(|| format!("Failed to create {} folder", folder))?;
 
-            // Create starter files based on folder type
+            // create starter files based on folder type
             match folder.as_str() {
                 "function" => {
                     let main_mcfunction = folder_path.join("main.mcfunction");
-                    fs::write(main_mcfunction, "").context("Failed to create main.mcfunction")?;
+                    fs::write(main_mcfunction, get_sample_content("function"))
+                        .context("Failed to create main.mcfunction")?;
                 }
                 "advancement" => {
                     let example_advancement = folder_path.join("advancement.json");
-                    let content = serde_json::json!({
-                      "criteria": {}
-                    });
-                    fs::write(example_advancement, serde_json::to_string_pretty(&content)?)
+                    fs::write(example_advancement, get_sample_content("advancement"))
                         .context("Failed to create example advancement")?;
-                }
-                "tags" => {
-                    fs::create_dir_all(&folder_path).context("Failed to create tags folder")?;
                 }
                 "recipe" => {
                     let example_recipe = folder_path.join("recipe.json");
-                    let content = serde_json::json!({
-                      "type": ""
-                    });
-                    fs::write(example_recipe, serde_json::to_string_pretty(&content)?)
+                    fs::write(example_recipe, get_sample_content("recipe"))
                         .context("Failed to create example recipe")?;
                 }
                 "loot_table" => {
                     let example_loot = folder_path.join("loot_table.json");
-                    let content = serde_json::json!({});
-                    fs::write(example_loot, serde_json::to_string_pretty(&content)?)
+                    fs::write(example_loot, get_sample_content("loot_table"))
                         .context("Failed to create example loot table")?;
                 }
                 "predicate" => {
                     let example_predicate = folder_path.join("predicate.json");
-                    let content = serde_json::json!({
-                      "condition": ""
-                    });
-                    fs::write(example_predicate, serde_json::to_string_pretty(&content)?)
+                    fs::write(example_predicate, get_sample_content("predicate"))
                         .context("Failed to create example predicate")?;
                 }
                 _ => {}

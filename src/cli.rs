@@ -25,7 +25,7 @@ pub enum Commands {
         #[arg(short = 'f', long = "format", num_args = 1.., value_delimiter = ' ')]
         format: Option<Vec<u8>>,
 
-        /// Include minecraft namespace
+        /// Include minecraft namespace folder
         #[arg(
             short = 'm',
             long,
@@ -34,19 +34,19 @@ pub enum Commands {
         )]
         minecraft: bool,
 
-        /// Include minecraft load.mcfunction tag
+        /// Include template minecraft load.mcfunction tag
         #[arg(long = "load", requires = "minecraft")]
         minecraft_load: bool,
 
-        /// Include minecraft tick.mcfunction tag
+        /// Include template minecraft tick.mcfunction tag
         #[arg(long = "tick", requires = "minecraft")]
         minecraft_tick: bool,
 
-        /// Custom namespace
+        /// Custom namespace name
         #[arg(short, long, group = "namespace_handling")]
         namespace: Option<String>,
 
-        /// Folders to create in custom namespace (space-separated list)
+        /// Stater folder files to create in custom namespace (space-separated list)
         #[arg(short = 's', long = "folders", num_args = 1.., value_delimiter = ' ', requires = "namespace")]
         folders: Option<Vec<String>>,
 
@@ -107,6 +107,27 @@ pub enum Commands {
         output_dir: Option<String>,
 
         /// Force overwrite existing zip file without prompting
+        #[arg(short = 'F', long)]
+        force: bool,
+    },
+    Add {
+        /// Type of element to add (e.g., function, advancement, loot_table)
+        #[arg(short, long)]
+        element_type: Option<String>, // Changed from String to Option<String>
+
+        /// Path to datapack directory
+        #[arg(short, long)]
+        path: Option<String>,
+
+        /// Name of the namespace to add elements to
+        #[arg(short = 'x', long)] // Ensured unique short option '-x'
+        namespace: Option<String>,
+
+        /// Path and name for the new file (supports subdirectories)
+        #[arg(short, long)]
+        name: Option<String>, // Changed from String to Option<String>
+
+        /// Force overwrite existing files without prompting
         #[arg(short = 'F', long)]
         force: bool,
     },

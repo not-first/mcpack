@@ -8,6 +8,7 @@ pub struct PackFormatInfo {
     pub versions: Vec<&'static str>,
 }
 
+// main hashmap of pack formats and supported minecraft versions
 lazy_static! {
     pub static ref PACK_FORMAT_VERSIONS: HashMap<u8, PackFormatInfo> = {
         let mut m = HashMap::new();
@@ -33,14 +34,17 @@ lazy_static! {
     };
 }
 
+// get pack format info
 pub fn get_version_info(format: u8) -> Option<PackFormatInfo> {
     PACK_FORMAT_VERSIONS.get(&format).cloned()
 }
 
+// check if a pack format is valid
 pub fn is_valid_format(format: u8) -> bool {
     PACK_FORMAT_VERSIONS.contains_key(&format)
 }
 
+// get a string of all valid pack formats
 pub fn get_formats_string() -> String {
     PACK_FORMATS
         .iter()
@@ -51,14 +55,14 @@ pub fn get_formats_string() -> String {
 
 fn parse_version(version: &str) -> Vec<u32> {
     let mut parts: Vec<u32> = version.split('.').map(|s| s.parse().unwrap_or(0)).collect();
-    // Pad with .0 if needed (e.g. "1.21" -> "1.21.0")
+    // add .0 to the end if needed to help sorting (e.g. "1.21" -> "1.21.0")
     while parts.len() < 3 {
         parts.push(0);
     }
     parts
 }
 
-/// Gets all valid pack formats between min and max inclusive
+/// gets all valid pack formats between min and max inclusive
 pub fn get_formats_in_range(min: u8, max: u8) -> Vec<u8> {
     PACK_FORMATS
         .iter()
@@ -67,7 +71,7 @@ pub fn get_formats_in_range(min: u8, max: u8) -> Vec<u8> {
         .collect()
 }
 
-/// Gets all Minecraft versions supported by a sequence of pack formats
+/// gets all minecraft versions supported by a sequence of pack formats
 pub fn get_version_range(formats: &[u8]) -> Vec<&'static str> {
     let mut versions = Vec::new();
     for &format in formats {
@@ -84,7 +88,7 @@ pub fn get_version_range(formats: &[u8]) -> Vec<&'static str> {
     versions
 }
 
-/// Formats a list of versions into ranges where possible
+/// formats a list of versions into ranges where possible
 pub fn format_version_range(versions: &[&str]) -> String {
     if versions.is_empty() {
         return String::new();
@@ -98,7 +102,7 @@ pub fn format_version_range(versions: &[&str]) -> String {
         let prev_parts = parse_version(prev);
         let curr_parts = parse_version(version);
 
-        // Check if versions are consecutive
+        // check if versions are consecutive (out of the supported formats)
         let consecutive = prev_parts
             .iter()
             .zip(curr_parts.iter())
@@ -121,7 +125,7 @@ pub fn format_version_range(versions: &[&str]) -> String {
         prev = version;
     }
 
-    // Handle the last range
+    // handle the last range
     if prev == range_start {
         ranges.push(range_start.trim_end_matches(".0").to_string());
     } else {

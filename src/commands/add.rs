@@ -1,5 +1,150 @@
-use crate::cli::AddArgs;
+use crate::elements::{get_sample_content, is_valid_element_type, ELEMENT_TYPES};
+use anyhow::{Context, Result};
+use console::style;
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use std::fs;
+use std::path::PathBuf;
 
-pub fn run(args: &AddArgs) {
-    println!("{:#?}", args);
+pub fn run(command: &crate::cli::Commands) -> Result<()> {
+    if let crate::cli::Commands::Add {
+        element_type,
+        path,
+        namespace,
+        name,
+        force,
+    } = command
+    {
+        let theme = &ColorfulTheme::default();
+
+        // Prompt for element_type if not provided
+        let element_type = if let Some(et) = element_type {
+            et.clone()
+        } else {
+            // List of available element types
+            let element_names: Vec<&str> = ELEMENT_TYPES.iter().map(|(name, _)| *name).collect();
+            let selection = Select::with_theme(theme)
+                .with_prompt("Select element type to add")
+                .items(&element_names)
+                .interact()?;
+            element_names[selection].to_string()
+        };
+
+        // Validate element type
+        if !is_valid_element_type(&element_type) {
+            let valid_types = ELEMENT_TYPES
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!("Invalid element type. Supported types are: {}", valid_types);
+        }
+
+        // Prompt for name if not provided
+        let name = if let Some(n) = name {
+            n.clone()
+        } else {
+            Input::with_theme(theme)
+                .with_prompt("Enter name for the new file")
+                .interact_text()
+                .context("Failed to get file name")?
+        };
+
+        let root_dir = if let Some(p) = path {
+            PathBuf::from(p)
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Verify it's a datapack directory
+        if !root_dir.join("pack.mcmeta").exists() {
+            anyhow::bail!("Not a datapack directory (pack.mcmeta not found)");
+        }
+
+        // Get or select namespace
+        let namespace = if let Some(ns) = namespace {
+            ns.clone()
+        } else {
+            // Look for existing namespaces
+            let data_dir = root_dir.join("data");
+            let namespaces: Vec<String> = if data_dir.exists() {
+                fs::read_dir(&data_dir)?
+                    .filter_map(|entry| {
+                        entry.ok().and_then(|e| {
+                            if e.file_type().ok()?.is_dir() {
+                                Some(e.file_name().to_string_lossy().to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            if namespaces.is_empty() {
+                Input::with_theme(theme)
+                    .with_prompt("Enter namespace name")
+                    .interact_text()?
+            } else if namespaces.len() == 1 {
+                namespaces[0].clone()
+            } else {
+                let selection = Select::with_theme(theme)
+                    .with_prompt("Select namespace")
+                    .items(&namespaces)
+                    .interact()?;
+                namespaces[selection].clone()
+            }
+        };
+
+        let (_, extension) = ELEMENT_TYPES
+            .iter()
+            .find(|(name, _)| *name == element_type)
+            .unwrap();
+
+        let data_type_dir = root_dir.join("data").join(&namespace).join(&element_type);
+
+        let file_path = data_type_dir.join(format!("{}{}", name, extension));
+
+        // Create the parent directories if they don't exist
+        if let Some(parent_dir) = file_path.parent() {
+            fs::create_dir_all(parent_dir)?;
+        }
+
+        // Check if the file already exists
+        if file_path.exists() && !*force {
+            let confirm = Confirm::with_theme(theme)
+                .with_prompt(format!(
+                    "File '{}' already exists. Overwrite?",
+                    file_path.display()
+                ))
+                .default(false)
+                .interact()?;
+
+            if !confirm {
+                println!(
+                    "{} Skipped creating '{}'",
+                    style("⚠️").yellow(),
+                    file_path.display()
+                );
+                return Ok(());
+            }
+        }
+
+        fs::write(&file_path, get_sample_content(&element_type))?;
+
+        println!(
+            "\n{} Created {} '{}'",
+            style("✓").green(),
+            style(&element_type).cyan(),
+            style(
+                file_path
+                    .strip_prefix(&root_dir.join("data").join(&namespace).join(&element_type))?
+                    .display()
+            )
+            .white()
+        );
+    }
+
+    Ok(())
 }
