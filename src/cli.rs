@@ -113,19 +113,19 @@ pub enum Commands {
     Add {
         /// Type of element to add (e.g., function, advancement, loot_table)
         #[arg(short, long)]
-        element_type: Option<String>, // Changed from String to Option<String>
+        element_type: Option<String>,
 
         /// Path to datapack directory
         #[arg(short, long)]
         path: Option<String>,
 
         /// Name of the namespace to add elements to
-        #[arg(short = 'x', long)] // Ensured unique short option '-x'
+        #[arg(short = 'x', long)]
         namespace: Option<String>,
 
         /// Path and name for the new file (supports subdirectories)
         #[arg(short, long)]
-        name: Option<String>, // Changed from String to Option<String>
+        name: Option<String>,
 
         /// Force overwrite existing files without prompting
         #[arg(short = 'F', long)]

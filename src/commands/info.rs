@@ -473,7 +473,7 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
         .filter(|&&f| pack_formats::is_valid_format(f))
         .copied()
         .collect();
-    let versions = pack_formats::get_version_range(&valid_formats);
+    let versions = pack_formats::get_format_versions(&valid_formats);
     let version_range = pack_formats::format_version_range(&versions);
 
     println!(

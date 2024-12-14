@@ -63,7 +63,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                 "{}{}.zip",
                 datapack_name,
                 pack_formats::get_version_info(pack_format)
-                    .map(|info| format!("_{}", info.versions.last().unwrap()))
+                    .map(|info| format!("_{}", info.last().unwrap()))
                     .unwrap_or_default()
             )
         };

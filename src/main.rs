@@ -1,12 +1,8 @@
-mod cli;
-mod commands;
-mod elements;
-mod pack_formats;
-
 use anyhow::Result;
 use clap::Parser;
-use cli::{Cli, Commands};
 use console::style;
+use mcpack::cli::{Cli, Commands};
+use mcpack::commands;
 
 fn main() {
     if let Err(err) = run() {

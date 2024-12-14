@@ -20,6 +20,11 @@ pub const ELEMENT_TYPES: &[(&str, &str)] = &[
     ("walk_variant", ".json"),
 ];
 
+// check if an element type is valid
+pub fn is_valid_element_type(element_type: &str) -> bool {
+    ELEMENT_TYPES.iter().any(|(name, _)| *name == element_type)
+}
+
 // all elements and their template files
 pub fn get_sample_content(element_type: &str) -> String {
     match element_type {
@@ -136,9 +141,4 @@ pub fn get_sample_content(element_type: &str) -> String {
         .unwrap(),
         _ => serde_json::to_string_pretty(&serde_json::json!({})).unwrap(),
     }
-}
-
-// check if an element type is valid
-pub fn is_valid_element_type(element_type: &str) -> bool {
-    ELEMENT_TYPES.iter().any(|(name, _)| *name == element_type)
 }

@@ -190,7 +190,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
                 .iter()
                 .map(|&f| {
                     let info = pack_formats::get_version_info(f).unwrap();
-                    format!("Format {} ({})", f, info.versions.join(", "))
+                    format!("Format {} ({})", f, info.join(", "))
                 })
                 .collect();
 

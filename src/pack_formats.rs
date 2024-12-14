@@ -3,48 +3,27 @@ use std::collections::HashMap;
 
 pub const PACK_FORMATS: &[u8] = &[48, 57, 61];
 
-#[derive(Debug, Clone)]
-pub struct PackFormatInfo {
-    pub versions: Vec<&'static str>,
-}
-
-// main hashmap of pack formats and supported minecraft versions
 lazy_static! {
-    pub static ref PACK_FORMAT_VERSIONS: HashMap<u8, PackFormatInfo> = {
+    pub static ref PACK_FORMAT_VERSIONS: HashMap<u8, Vec<&'static str>> = {
         let mut m = HashMap::new();
-        m.insert(
-            48,
-            PackFormatInfo {
-                versions: vec!["1.21", "1.21.1"],
-            },
-        );
-        m.insert(
-            57,
-            PackFormatInfo {
-                versions: vec!["1.21.2", "1.21.3"],
-            },
-        );
-        m.insert(
-            61,
-            PackFormatInfo {
-                versions: vec!["1.21.4"],
-            },
-        );
+        m.insert(48, vec!["1.21", "1.21.1"]);
+        m.insert(57, vec!["1.21.2", "1.21.3"]);
+        m.insert(61, vec!["1.21.4"]);
         m
     };
 }
 
-// get pack format info
-pub fn get_version_info(format: u8) -> Option<PackFormatInfo> {
-    PACK_FORMAT_VERSIONS.get(&format).cloned()
+// get minecraft version(s)given a pack format
+pub fn get_version_info(format: u8) -> Option<&'static Vec<&'static str>> {
+    PACK_FORMAT_VERSIONS.get(&format)
 }
 
-// check if a pack format is valid
+// check if a given pack format is valid
 pub fn is_valid_format(format: u8) -> bool {
     PACK_FORMAT_VERSIONS.contains_key(&format)
 }
 
-// get a string of all valid pack formats
+// get a formatted string of all valid pack formats
 pub fn get_formats_string() -> String {
     PACK_FORMATS
         .iter()
@@ -53,7 +32,7 @@ pub fn get_formats_string() -> String {
         .join(", ")
 }
 
-fn parse_version(version: &str) -> Vec<u32> {
+pub fn parse_version(version: &str) -> Vec<u32> {
     let mut parts: Vec<u32> = version.split('.').map(|s| s.parse().unwrap_or(0)).collect();
     // add .0 to the end if needed to help sorting (e.g. "1.21" -> "1.21.0")
     while parts.len() < 3 {
@@ -62,7 +41,7 @@ fn parse_version(version: &str) -> Vec<u32> {
     parts
 }
 
-/// gets all valid pack formats between min and max inclusive
+/// gets all valid pack formats between min and max inclusive format
 pub fn get_formats_in_range(min: u8, max: u8) -> Vec<u8> {
     PACK_FORMATS
         .iter()
@@ -72,11 +51,11 @@ pub fn get_formats_in_range(min: u8, max: u8) -> Vec<u8> {
 }
 
 /// gets all minecraft versions supported by a sequence of pack formats
-pub fn get_version_range(formats: &[u8]) -> Vec<&'static str> {
+pub fn get_format_versions(formats: &[u8]) -> Vec<&'static str> {
     let mut versions = Vec::new();
     for &format in formats {
         if let Some(info) = get_version_info(format) {
-            versions.extend(info.versions.iter().copied());
+            versions.extend(info.iter().copied());
         }
     }
     versions.sort_by(|&a, &b| {
