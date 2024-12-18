@@ -6,6 +6,7 @@ edition = "2021"
 about = "A CLI tool for managing minecraft datapacks."
 
 readme = "README.md"
+homepage = "https://github.com/not-first/mcpack/"
 repository = "https://github.com/not-first/mcpack/"
 license = "MIT"
 
