@@ -46,7 +46,7 @@ mcpack create [NAME] [OPTIONS]
   - `--load`: Include template load.mcfunction file
   - `--tick`: Include template tick.mcfunction file
 - `-n, --namespace <NAMESPACE>`: Custom namespace name
-  - `-s, --starters`: Starter files to create in custom namespace as a space separated list (e.g. `function advancement`). Refer to *HERE* for all possible values.
+  - `-s, --starters`: Starter files to create in custom namespace as a space separated list (e.g. `function advancement`). Refer to [here](#supported-starter-folders-and-element-types) for all possible values.
 - `-o, --output-dir <DIR>`: Output directory for the datapack.
 - `-F, --force`: Force overwriting previous folder contents without confirmation.
 - `--no-icon`: Skip pack icon prompt
@@ -63,7 +63,7 @@ mcpack create [NAME] [OPTIONS]
   mcpack create my_datapack
   ````
 
-  Initialise a new datapack named `my_datapack`, prompting for information about contents and properties.
+  Initialize a new datapack named `my_datapack`, prompting for information about contents and properties.
 
 - **Create a datapack partially using flags**
 
@@ -93,7 +93,7 @@ mcpack info [NAME/PATH] [OPTIONS]
 
 #### Arguments (info)
 
-- `path`: Name/path of datapack folder or zip file. THIS IS ASME AS ZIP MAKE THA TEREFENR
+- `path`: Name/path of datapack folder or zip file. [more info](#namepath-mechanism-in-commands)
 
 #### Options (info)
 
@@ -137,7 +137,7 @@ Must be executed in the base folder of a minecraft datapack (folder which contai
 
 - `-p, --path`: Path to datapack directory.
 
-- `-e, --element <ELEMENT>`: Type of element to add. Refer **here** for all things.
+- `-e, --element <ELEMENT>`: Type of element to add. Refer [here](#supported-starter-folders-and-element-types) for all possible values.
 - `-x, --namespace <NAMESPACE>`: Name of namespace to add element to. (Not required if only one namespace exists).
 - `-n, --name <NAME>`: Name for new file (refer to examples for how to include subdirectories).
 - `-F, --force`: Force overwriting existing files without prompting.
@@ -182,7 +182,7 @@ mcpack zip [NAME/PATH] [OPTIONS]
 
 #### Arguments (zip)
 
-- `path`: Name/path of datapack folder or zip file. THIS IS ASME AS ZIP MAKE THA TEREFENR
+- `path`: Name/path of datapack folder or zip file. [more info](#namepath-mechanism-in-commands)
 
 #### Options (zip)
 
@@ -237,14 +237,7 @@ mcpack zip [NAME/PATH] [OPTIONS]
 
 ### Supported Starter Folders and Element Types
 
-- **Starter Folders:**
-  - `function`
-  - `advancement`
-  - `recipe`
-  - `loot_table`
-  - `predicate`
-
-- **Supported Element Types:**
+- **Supported starters/element types:**
   - `function` (.mcfunction)
   - `tag` (.json)
   - `advancement` (.json)
