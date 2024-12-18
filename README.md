@@ -1,4 +1,5 @@
-# mcpack
+# <img src="https://minecraft.wiki/images/Anvil_%28N%29_JE3.png?d438e" alt="Anvil Image" width="40"/> mcpack
+
 
 A rust CLI to initialize, add files to, and view information about minecraft datapacks through interactive terminal prompts (or, optional flags).
 
