@@ -94,6 +94,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
     Ok(())
 }
 
+// locate pack.mcmeta in the zip archive
 fn find_pack_mcmeta_in_zip(archive: &mut ZipArchive<fs::File>) -> Result<String> {
     let mut pack_mcmeta_content = None;
 
@@ -112,6 +113,7 @@ fn find_pack_mcmeta_in_zip(archive: &mut ZipArchive<fs::File>) -> Result<String>
     pack_mcmeta_content.context("pack.mcmeta not found in zip archive")
 }
 
+// parse the description field in pack.mcmeta if it's a string or using json chat components
 fn parse_description(desc: &Value) -> String {
     match desc {
         Value::String(s) => s.to_string(),
@@ -124,6 +126,7 @@ fn parse_description(desc: &Value) -> String {
     }
 }
 
+// parse a chat component object into a string
 fn parse_text_component(component: &Value) -> String {
     match component {
         Value::String(s) => s.to_string(),
@@ -144,6 +147,7 @@ fn parse_text_component(component: &Value) -> String {
     }
 }
 
+// parse the supported formats field in pack.mcmeta
 fn parse_supported_formats(pack_format: u8, formats: Option<&Value>) -> Vec<u8> {
     let mut supported_formats = vec![pack_format];
 
@@ -167,6 +171,7 @@ fn parse_supported_formats(pack_format: u8, formats: Option<&Value>) -> Vec<u8> 
     supported_formats
 }
 
+// parse the features field in pack.mcmeta
 fn parse_features(mcmeta: &Value) -> Vec<(String, bool)> {
     let valid_features = vec![
         "minecraft:redstone_experiments",
@@ -192,6 +197,7 @@ fn parse_features(mcmeta: &Value) -> Vec<(String, bool)> {
     features
 }
 
+// parse the filters field in pack.mcmeta
 fn parse_filter(mcmeta: &Value) -> Option<FilterInfo> {
     mcmeta
         .get("filter")
@@ -218,6 +224,7 @@ fn parse_filter(mcmeta: &Value) -> Option<FilterInfo> {
         .filter(|f| !f.block.is_empty())
 }
 
+// parse the overlays field in pack.mcmeta
 fn parse_overlays(mcmeta: &Value) -> Vec<OverlayInfo> {
     let mut overlays = Vec::new();
     if let Some(entries) = mcmeta
@@ -250,6 +257,7 @@ fn parse_overlays(mcmeta: &Value) -> Vec<OverlayInfo> {
     overlays
 }
 
+// collect all the information from a zip archive
 fn collect_info_from_zip(
     pack_mcmeta_content: &str,
     archive: &mut ZipArchive<fs::File>,

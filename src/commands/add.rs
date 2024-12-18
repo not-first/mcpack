@@ -16,11 +16,11 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
     {
         let theme = &ColorfulTheme::default();
 
-        // Prompt for element_type if not provided
+        // prompt for element_type if not provided
         let element_type = if let Some(et) = element {
             et.clone()
         } else {
-            // List of available element types
+            // list of available element types
             let element_names: Vec<&str> = ELEMENT_TYPES.iter().map(|(name, _)| *name).collect();
             let selection = Select::with_theme(theme)
                 .with_prompt("Select element type to add")
@@ -29,7 +29,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             element_names[selection].to_string()
         };
 
-        // Validate element type
+        // validate element type
         if !is_valid_element_type(&element_type) {
             let valid_types = ELEMENT_TYPES
                 .iter()
@@ -42,7 +42,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         // **Move flags_used computation before unwrapping `name`**
         let flags_used = element.is_some() || name.is_some();
 
-        // Prompt for name if not provided
+        // prompt for name if not provided
         let name = if let Some(n) = name {
             n.clone()
         } else {
@@ -58,16 +58,16 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             std::env::current_dir()?
         };
 
-        // Verify it's a datapack directory
+        // verify it's a datapack directory
         if !root_dir.join("pack.mcmeta").exists() {
             anyhow::bail!("Not a datapack directory (pack.mcmeta not found)");
         }
 
-        // Get or select namespace
+        // get or select namespace
         let namespace = if let Some(ns) = namespace {
             ns.clone()
         } else {
-            // Look for existing namespaces
+            // look for existing namespaces
             let data_dir = root_dir.join("data");
             let mut namespaces: Vec<String> = if data_dir.exists() {
                 fs::read_dir(&data_dir)?
@@ -85,13 +85,13 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                 Vec::new()
             };
 
-            // If flags are used without specifying a namespace, exclude 'minecraft' from consideration
+            // if flags are used without specifying a namespace, exclude 'minecraft' from consideration
             if flags_used {
                 namespaces.retain(|ns| ns != "minecraft");
             }
 
             if namespaces.is_empty() {
-                // If no namespaces are present, prompt for namespace (including 'minecraft' if flags are used)
+                // if no namespaces are present, prompt for namespace (including 'minecraft' if flags are used)
                 if flags_used {
                     let mut all_namespaces = Vec::new();
                     if data_dir.exists() {
@@ -107,31 +107,31 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                             })
                             .collect();
                     }
-                    // Include 'minecraft' in the prompt options only if flags are used
+                    // include 'minecraft' in the prompt options only if flags are used
                     let selection = Select::with_theme(theme)
                         .with_prompt("Select namespace to add the element to")
                         .items(&all_namespaces)
                         .interact()?;
                     all_namespaces[selection].clone()
                 } else {
-                    // Non-flagged command behavior
+                    // non-flagged command behavior
                     Input::with_theme(theme)
                         .with_prompt("Enter namespace name")
                         .interact_text()?
                 }
             } else if namespaces.len() == 1 {
-                // Only one non-minecraft namespace exists, use it
+                // only one non-minecraft namespace exists, use it
                 namespaces[0].clone()
             } else {
                 if flags_used {
-                    // Multiple namespaces exist, prompt user excluding 'minecraft'
+                    // multiple namespaces exist, prompt user excluding 'minecraft'
                     let selection = Select::with_theme(theme)
                         .with_prompt("Select namespace to add the element to")
                         .items(&namespaces)
                         .interact()?;
                     namespaces[selection].clone()
                 } else {
-                    // Multiple namespaces exist, include 'minecraft' in the prompt options
+                    // multiple namespaces exist, include 'minecraft' in the prompt options
                     let mut prompt_namespaces = namespaces.clone();
                     prompt_namespaces.push("minecraft".to_string());
                     let selection = Select::with_theme(theme)
@@ -152,12 +152,12 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
 
         let file_path = data_type_dir.join(format!("{}{}", name, extension));
 
-        // Create the parent directories if they don't exist
+        // create the parent directories if they don't exist
         if let Some(parent_dir) = file_path.parent() {
             fs::create_dir_all(parent_dir)?;
         }
 
-        // Check if the file already exists
+        // check if the file already exists
         if file_path.exists() && !*force {
             let confirm = Confirm::with_theme(theme)
                 .with_prompt(format!(

@@ -3,7 +3,7 @@ name = "mcpack"
 authors = ["fakerr"]
 version = "0.1.0"
 edition = "2021"
-about = "A CLI tool for managing minecraft datapacks."
+description = "A CLI tool for managing minecraft datapacks."
 
 readme = "README.md"
 homepage = "https://github.com/not-first/mcpack/"
