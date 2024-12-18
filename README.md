@@ -1,6 +1,6 @@
 # <img src="https://minecraft.wiki/images/Anvil_%28N%29_JE3.png?d438e" alt="Anvil Image" width="40"/> mcpack
 
-A rust CLI to initialize, add files to, and view information about minecraft datapacks through interactive terminal prompts (or, optional flags).
+A rust CLI to initialize, add files to, view information about and zip minecraft datapacks through interactive terminal prompts (or, optional flags).
 *Only supports the newer datapack folder structure: pack format 48 (minecraft 1.21) and newer.*
 
 ![Create command demo](https://vhs.charm.sh/vhs-1pytgMLLVTXDuSljotfYUP.gif)
