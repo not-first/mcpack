@@ -75,7 +75,7 @@ pub fn run(args: &Commands) -> Result<()> {
         folders,
         output_dir,
         skip_icon,
-        skip_starter_files,
+        skip_starters,
         skip_minecraft_tags,
     } = args
     else {
@@ -120,7 +120,7 @@ pub fn run(args: &Commands) -> Result<()> {
             namespace_folders: folders.clone(),
             output_dir: output_dir.clone(),
             skip_icon: *skip_icon,
-            skip_starter_files: *skip_starter_files,
+            skip_starter_files: *skip_starters,
             skip_minecraft_tags: *skip_minecraft_tags,
         },
     )?;
@@ -283,14 +283,21 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
             }
             None => {
                 if custom_namespace.is_some() {
-                    let folder_options = vec![
+                    // Define the five default folder types
+                    let default_folders = [
                         "function",
                         "advancement",
-                        "tags",
                         "recipe",
                         "loot_table",
                         "predicate",
                     ];
+
+                    // Filter ELEMENT_TYPES to include only the default folders
+                    let folder_options: Vec<&str> = ELEMENT_TYPES
+                        .iter()
+                        .filter(|(name, _)| default_folders.contains(name))
+                        .map(|(name, _)| *name)
+                        .collect();
 
                     let selected_folders = MultiSelect::with_theme(theme)
                         .with_prompt("Select starter folders for custom namespace")
@@ -303,21 +310,12 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
                         .map(|&i| folder_options[i].to_string())
                         .collect::<Vec<_>>();
 
-                    // Validate selected folders
-                    for folder in &folders {
-                        if !ELEMENT_TYPES.iter().any(|(name, _)| name == folder) {
-                            anyhow::bail!(
-                                "Invalid starter folder name: '{}'. Valid options are: {:?}",
-                                folder,
-                                ELEMENT_TYPES
-                                    .iter()
-                                    .map(|(name, _)| name)
-                                    .collect::<Vec<_>>()
-                            );
-                        }
-                    }
+                    // Remove duplicates if any
+                    let mut unique_folders = folders.clone();
+                    unique_folders.sort();
+                    unique_folders.dedup();
 
-                    folders
+                    unique_folders
                 } else {
                     Vec::new()
                 }
@@ -376,9 +374,17 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
 
     // handle icon if provided
     if let Some(icon_path) = pack_settings.icon_path {
-        let icon_source = PathBuf::from(&icon_path);
+        // Sanitize the icon path by trimming surrounding quotes
+        let sanitized_icon_path = icon_path.trim_matches(|c| c == '"' || c == '\'');
+
+        let icon_source = PathBuf::from(sanitized_icon_path);
+        println!("Using icon path: {}", icon_source.display()); // Optional: Debug print
+
         if !icon_source.exists() {
-            anyhow::bail!("Selected icon file does not exist: {}", icon_path);
+            anyhow::bail!(
+                "Selected icon file does not exist: {}",
+                icon_source.display()
+            );
         }
 
         // verify it's a PNG file
@@ -503,7 +509,21 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
                     fs::write(example_predicate, get_sample_content("predicate"))
                         .context("Failed to create example predicate")?;
                 }
-                _ => {}
+                // Handle additional element types
+                element_type => {
+                    // Find the extension for the element_type
+                    if let Some((_, ext)) =
+                        ELEMENT_TYPES.iter().find(|(name, _)| *name == element_type)
+                    {
+                        let filename = format!("example{}", ext);
+                        let file_path = folder_path.join(&filename);
+                        fs::write(file_path, get_sample_content(element_type))
+                            .with_context(|| format!("Failed to create {}", filename))?;
+                    } else {
+                        // This case should not occur due to prior validation
+                        anyhow::bail!("Unsupported element type: {}", element_type);
+                    }
+                }
             }
         }
     }

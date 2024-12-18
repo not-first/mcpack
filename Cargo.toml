@@ -1,8 +1,16 @@
 [package]
 name = "mcpack"
+authors = ["fakerr"]
 version = "0.1.0"
 edition = "2021"
-about = "A CLI tool for managing minecraft datapacks"
+about = "A CLI tool for managing minecraft datapacks."
+
+readme = "README.md"
+repository = "https://github.com/not-first/mcpack/"
+license = "MIT"
+
+categories = ["command-line-utilities", "template-engine", "game-development"]
+keywords = ["minecraft", "datapack", "cli"]
 
 [dependencies]
 clap = { version = "4.5.22", features = ["derive"] }

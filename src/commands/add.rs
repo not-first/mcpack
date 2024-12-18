@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 pub fn run(command: &crate::cli::Commands) -> Result<()> {
     if let crate::cli::Commands::Add {
-        element_type,
+        element,
         path,
         namespace,
         name,
@@ -17,7 +17,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         let theme = &ColorfulTheme::default();
 
         // Prompt for element_type if not provided
-        let element_type = if let Some(et) = element_type {
+        let element_type = if let Some(et) = element {
             et.clone()
         } else {
             // List of available element types
@@ -38,6 +38,9 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                 .join(", ");
             anyhow::bail!("Invalid element type. Supported types are: {}", valid_types);
         }
+
+        // **Move flags_used computation before unwrapping `name`**
+        let flags_used = element.is_some() || name.is_some();
 
         // Prompt for name if not provided
         let name = if let Some(n) = name {
@@ -66,7 +69,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         } else {
             // Look for existing namespaces
             let data_dir = root_dir.join("data");
-            let namespaces: Vec<String> = if data_dir.exists() {
+            let mut namespaces: Vec<String> = if data_dir.exists() {
                 fs::read_dir(&data_dir)?
                     .filter_map(|entry| {
                         entry.ok().and_then(|e| {
@@ -82,18 +85,61 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
                 Vec::new()
             };
 
+            // If flags are used without specifying a namespace, exclude 'minecraft' from consideration
+            if flags_used {
+                namespaces.retain(|ns| ns != "minecraft");
+            }
+
             if namespaces.is_empty() {
-                Input::with_theme(theme)
-                    .with_prompt("Enter namespace name")
-                    .interact_text()?
+                // If no namespaces are present, prompt for namespace (including 'minecraft' if flags are used)
+                if flags_used {
+                    let mut all_namespaces = Vec::new();
+                    if data_dir.exists() {
+                        all_namespaces = fs::read_dir(&data_dir)?
+                            .filter_map(|entry| {
+                                entry.ok().and_then(|e| {
+                                    if e.file_type().ok()?.is_dir() {
+                                        Some(e.file_name().to_string_lossy().to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                            })
+                            .collect();
+                    }
+                    // Include 'minecraft' in the prompt options only if flags are used
+                    let selection = Select::with_theme(theme)
+                        .with_prompt("Select namespace to add the element to")
+                        .items(&all_namespaces)
+                        .interact()?;
+                    all_namespaces[selection].clone()
+                } else {
+                    // Non-flagged command behavior
+                    Input::with_theme(theme)
+                        .with_prompt("Enter namespace name")
+                        .interact_text()?
+                }
             } else if namespaces.len() == 1 {
+                // Only one non-minecraft namespace exists, use it
                 namespaces[0].clone()
             } else {
-                let selection = Select::with_theme(theme)
-                    .with_prompt("Select namespace")
-                    .items(&namespaces)
-                    .interact()?;
-                namespaces[selection].clone()
+                if flags_used {
+                    // Multiple namespaces exist, prompt user excluding 'minecraft'
+                    let selection = Select::with_theme(theme)
+                        .with_prompt("Select namespace to add the element to")
+                        .items(&namespaces)
+                        .interact()?;
+                    namespaces[selection].clone()
+                } else {
+                    // Multiple namespaces exist, include 'minecraft' in the prompt options
+                    let mut prompt_namespaces = namespaces.clone();
+                    prompt_namespaces.push("minecraft".to_string());
+                    let selection = Select::with_theme(theme)
+                        .with_prompt("Select namespace to add the element to")
+                        .items(&prompt_namespaces)
+                        .interact()?;
+                    prompt_namespaces[selection].clone()
+                }
             }
         };
 

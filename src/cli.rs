@@ -46,8 +46,8 @@ pub enum Commands {
         #[arg(short, long, group = "namespace_handling")]
         namespace: Option<String>,
 
-        /// Stater folder files to create in custom namespace (space-separated list)
-        #[arg(short = 's', long = "folders", num_args = 1.., value_delimiter = ' ', requires = "namespace")]
+        /// Starter folder files to create in custom namespace (space-separated list)
+        #[arg(short = 's', long = "starters", num_args = 1.., value_delimiter = ' ', requires = "namespace")]
         folders: Option<Vec<String>>,
 
         /// Output directory for the datapack
@@ -64,11 +64,10 @@ pub enum Commands {
 
         /// Skip starter files creation for custom namespace
         #[arg(
-            long = "no-starter-files",
-            group = "namespace_handling",
-            conflicts_with = "folders"
+            long = "no-starters",
+            conflicts_with = "folders" // Removed from "namespace_handling" group
         )]
-        skip_starter_files: bool,
+        skip_starters: bool,
 
         /// Skip minecraft tags selection
         #[arg(long = "no-minecraft-tags", group = "minecraft_handling")]
@@ -113,13 +112,13 @@ pub enum Commands {
     Add {
         /// Type of element to add (e.g., function, advancement, loot_table)
         #[arg(short, long)]
-        element_type: Option<String>,
+        element: Option<String>,
 
         /// Path to datapack directory
         #[arg(short, long)]
         path: Option<String>,
 
-        /// Name of the namespace to add elements to
+        /// Name of the namespace to add element to
         #[arg(short = 'x', long)]
         namespace: Option<String>,
 

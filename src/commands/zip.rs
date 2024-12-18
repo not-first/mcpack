@@ -45,19 +45,20 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             .and_then(|f| f.as_u64())
             .context("Invalid pack.mcmeta: missing pack_format")? as u8;
 
-        // create zip file name from datapack name and Minecraft version
         let datapack_name = datapack_path
             .file_name()
             .context("Invalid datapack path")?
             .to_string_lossy();
 
-        // determine output file name
+        // **Validate that the custom zip name ends with .zip**
         let zip_name = if let Some(custom_name) = name {
-            if custom_name.ends_with(".zip") {
-                custom_name.to_string()
-            } else {
-                format!("{}.zip", custom_name)
+            if !custom_name.ends_with(".zip") {
+                anyhow::bail!(
+                    "The zip file name must end with '.zip'. Provided name: '{}'",
+                    custom_name
+                );
             }
+            custom_name.to_string()
         } else {
             format!(
                 "{}{}.zip",
