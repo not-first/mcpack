@@ -39,16 +39,16 @@ mcpack create [NAME] [OPTIONS]
 
 #### Options (create)
 
-- `-d, --description <DESCRIPTION>`: Description of the datapack.
+- `-d, --description <DESCRIPTION>`: Description of the datapack
 - `-i --icon <ICON_PATH>`: Path to pack icon (must be a PNG). *This will be copied into the datapack directory and correctly renamed to pack.png*
-- `-f, --format <FORMAT(S)>`: Pack format(s) to support, as a space separated list (e.g. `-f 48, 61`).
-- `-m, --minecraft`: Include the minecraft namespace folder (true if flag is provided, false if the flag is not).
+- `-f, --format <FORMAT(S)>`: Pack format(s) to support, as a space separated list (e.g. `-f 48, 61`)
+- `-m, --minecraft`: Include the minecraft namespace folder (true if flag is provided, false if the flag is not)
   - `--load`: Include template load.mcfunction file
   - `--tick`: Include template tick.mcfunction file
 - `-n, --namespace <NAMESPACE>`: Custom namespace name
-  - `-s, --starters`: Starter files to create in custom namespace as a space separated list (e.g. `function advancement`). Refer to [here](#supported-starter-folders-and-element-types) for all possible values.
-- `-o, --output-dir <DIR>`: Output directory for the datapack.
-- `-F, --force`: Force overwriting previous folder contents without confirmation.
+  - `-s, --starters`: Starter files to create in custom namespace as a space separated list (e.g. `function advancement`). Refer to [here](#supported-starter-folders-and-element-types) for all possible values
+- `-o, --output-dir <DIR>`: Output directory for the datapack
+- `-F, --force`: Force overwriting previous folder contents without confirmation
 - `--no-icon`: Skip pack icon prompt
 - `--no-minecraft-tags`: Skip minecraft load/tick template file prompt
 - `--no-starters`: Skip start file prompt
@@ -98,8 +98,8 @@ mcpack info [NAME/PATH] [OPTIONS]
 #### Options (info)
 
 - `--compact`: Show only basic information (name, description, pack format)
-- `--pack-info`: Show only information in pack.mcmeta file (excludes namespaces).
-- `--namespaces`: Show only namespace information.
+- `--pack-info`: Show only information in pack.mcmeta file (excludes namespaces)
+- `--namespaces`: Show only namespace information
 
 - `-h, --help`: View information about the command
 
@@ -137,12 +137,12 @@ Must be executed in the base folder of a minecraft datapack (folder which contai
 
 - `-p, --path`: Path to datapack directory.
 
-- `-e, --element <ELEMENT>`: Type of element to add. Refer [here](#supported-starter-folders-and-element-types) for all possible values.
-- `-x, --namespace <NAMESPACE>`: Name of namespace to add element to. (Not required if only one namespace exists).
-- `-n, --name <NAME>`: Name for new file (refer to examples for how to include subdirectories).
-- `-F, --force`: Force overwriting existing files without prompting.
+- `-e, --element <ELEMENT>`: Type of element to add. Refer [here](#supported-starter-folders-and-element-types) for all possible values
+- `-x, --namespace <NAMESPACE>`: Name of namespace to add element to. (Not required if only one namespace exists)
+- `-n, --name <NAME>`: Name for new file (refer to examples for how to include subdirectories)
+- `-F, --force`: Force overwriting existing files without prompting
 
-- `-h --help`: View information about the command.
+- `-h --help`: View information about the command
 
 #### Examples (add)
 
@@ -264,3 +264,5 @@ mcpack zip [NAME/PATH] [OPTIONS]
   - **Examples:**
     - `mcpack info my_datapack` will look for a folder called `my_datapack` in the current directory
     - `mcpack zip /path/to/datapack.zip` will use the file at the provided path.
+
+---
