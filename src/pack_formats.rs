@@ -1,14 +1,18 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-pub const PACK_FORMATS: &[u8] = &[48, 57, 61];
+pub const PACK_FORMATS: &[u8] = &[48, 57, 61, 71, 80, 81];
 
 lazy_static! {
     pub static ref PACK_FORMAT_VERSIONS: HashMap<u8, Vec<&'static str>> = {
         let mut m = HashMap::new();
+        // Data pack formats from Minecraft Wiki - 1.21+ only
         m.insert(48, vec!["1.21", "1.21.1"]);
         m.insert(57, vec!["1.21.2", "1.21.3"]);
         m.insert(61, vec!["1.21.4"]);
+        m.insert(71, vec!["1.21.5"]);
+        m.insert(80, vec!["1.21.6"]);
+        m.insert(81, vec!["1.21.7"]);
         m
     };
 }

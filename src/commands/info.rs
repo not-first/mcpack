@@ -59,26 +59,59 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
     } = command
     {
         match path {
-            Some(zip_path) => {
-                // construct the full zip path
-                let mut full_path = String::from(zip_path);
-                if !full_path.ends_with(".zip") {
-                    full_path.push_str(".zip");
+            Some(input_path) => {
+                let path_obj = Path::new(input_path);
+
+                // check if it's a directory (datapack folder)
+                if path_obj.is_dir() {
+                    let pack_mcmeta = path_obj.join("pack.mcmeta");
+                    if !pack_mcmeta.exists() {
+                        anyhow::bail!(
+                            "Not a valid datapack directory: pack.mcmeta not found in {}",
+                            input_path
+                        );
+                    }
+                    let info = collect_info(&pack_mcmeta)?;
+                    display_info(&info, *compact, *pack_info, *namespaces);
                 }
+                // if it's not a directory, check if it's a zip file
+                else if path_obj.exists() && input_path.ends_with(".zip") {
+                    let file = fs::File::open(path_obj)
+                        .with_context(|| format!("Failed to open zip file: {}", input_path))?;
+                    let mut archive = ZipArchive::new(file)
+                        .with_context(|| format!("Failed to read zip archive: {}", input_path))?;
 
-                // check if the file exists
-                if !std::path::Path::new(&full_path).exists() {
-                    anyhow::bail!("Zip file not found: {}", full_path);
+                    let pack_mcmeta_content = find_pack_mcmeta_in_zip(&mut archive)?;
+                    let info =
+                        collect_info_from_zip(&pack_mcmeta_content, &mut archive, input_path)?;
+                    display_info(&info, *compact, *pack_info, *namespaces);
                 }
+                // if neither exists, try appending .zip to the path
+                else {
+                    let mut zip_path = String::from(input_path);
+                    if !zip_path.ends_with(".zip") {
+                        zip_path.push_str(".zip");
+                    }
 
-                let file = fs::File::open(&full_path)
-                    .with_context(|| format!("Failed to open zip file: {}", full_path))?;
-                let mut archive = ZipArchive::new(file)
-                    .with_context(|| format!("Failed to read zip archive: {}", full_path))?;
+                    let zip_path_obj = Path::new(&zip_path);
+                    if zip_path_obj.exists() {
+                        let file = fs::File::open(zip_path_obj)
+                            .with_context(|| format!("Failed to open zip file: {}", zip_path))?;
+                        let mut archive = ZipArchive::new(file)
+                            .with_context(|| format!("Failed to read zip archive: {}", zip_path))?;
 
-                let pack_mcmeta_content = find_pack_mcmeta_in_zip(&mut archive)?;
-                let info = collect_info_from_zip(&pack_mcmeta_content, &mut archive, &full_path)?;
-                display_info(&info, *compact, *pack_info, *namespaces);
+                        let pack_mcmeta_content = find_pack_mcmeta_in_zip(&mut archive)?;
+                        let info =
+                            collect_info_from_zip(&pack_mcmeta_content, &mut archive, &zip_path)?;
+                        display_info(&info, *compact, *pack_info, *namespaces);
+                    } else {
+                        anyhow::bail!(
+                            "Neither datapack folder '{}' nor zip file '{}' found",
+                            input_path,
+                            zip_path
+                        );
+                    }
+                }
             }
             None => {
                 let pack_mcmeta = PathBuf::from("pack.mcmeta");
@@ -161,7 +194,8 @@ fn parse_supported_formats(pack_format: u8, formats: Option<&Value>) -> Vec<u8> 
                     obj.get("min_inclusive").and_then(|v| v.as_u64()),
                     obj.get("max_inclusive").and_then(|v| v.as_u64()),
                 ) {
-                    supported_formats = (min as u8..=max as u8).collect();
+                    // Only include valid pack formats within the range
+                    supported_formats = pack_formats::get_formats_in_range(min as u8, max as u8);
                 }
             }
             _ => {}
@@ -371,17 +405,29 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
     let supported_formats = parse_supported_formats(pack_format, pack.get("supported_formats"));
     let description =
         parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
-    let name = std::env::current_dir()?
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+
+    // Get the datapack name from the parent directory of pack.mcmeta
+    let datapack_dir = pack_mcmeta_path.parent().unwrap_or(Path::new("."));
+    let name = if pack_mcmeta_path == Path::new("pack.mcmeta") {
+        // If pack.mcmeta path is just "pack.mcmeta" (current directory case)
+        std::env::current_dir()?
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    } else {
+        datapack_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    };
 
     let features = parse_features(&mcmeta);
     let filter = parse_filter(&mcmeta);
     let overlays = parse_overlays(&mcmeta);
 
-    let data_dir = Path::new("data");
+    let data_dir = datapack_dir.join("data");
     let mut namespaces = HashMap::new();
 
     if data_dir.exists() {
