@@ -23,7 +23,7 @@ pub enum Commands {
 
         /// Pack format(s) to support (space-separated list)
         #[arg(short = 'f', long = "format", num_args = 1.., value_delimiter = ' ')]
-        format: Option<Vec<u8>>,
+        format: Option<Vec<String>>,
 
         /// Include minecraft namespace folder
         #[arg(

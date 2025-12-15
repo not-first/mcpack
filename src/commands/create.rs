@@ -16,7 +16,7 @@ struct PackSettings {
     name: String,
     description: String,
     icon_path: Option<String>,
-    pack_formats: Vec<u8>,
+    pack_formats: Vec<String>,
     include_minecraft_namespace: bool,
     minecraft_tags: Vec<String>,
     custom_namespace: Option<String>,
@@ -31,7 +31,7 @@ struct PackMcmeta {
 #[derive(Serialize)]
 struct Pack {
     description: String,
-    pack_format: u8,
+    pack_format: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     supported_formats: Option<SupportedFormatsType>,
 }
@@ -39,10 +39,10 @@ struct Pack {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum SupportedFormatsType {
-    Array(Vec<u8>),
+    Array(Vec<String>),
     Object {
-        min_inclusive: u8,
-        max_inclusive: u8,
+        min_inclusive: String,
+        max_inclusive: String,
     },
 }
 
@@ -50,7 +50,7 @@ struct CreateArgs {
     name: Option<String>,
     description: Option<String>,
     icon_path: Option<String>,
-    pack_formats: Option<Vec<u8>>,
+    pack_formats: Option<Vec<String>>,
     include_minecraft: bool,
     minecraft_tags: Option<Vec<String>>,
     custom_namespace: Option<String>,
@@ -84,7 +84,7 @@ pub fn run(args: &Commands) -> Result<()> {
 
     // only need to validate format arguments
     if let Some(formats) = format {
-        for &f in formats {
+        for f in formats {
             if !pack_formats::is_valid_format(f) {
                 anyhow::bail!(
                     "Invalid pack format: {}. Valid formats are: {}",
@@ -188,7 +188,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         None => {
             let format_strings: Vec<String> = PACK_FORMATS
                 .iter()
-                .map(|&f| {
+                .map(|f| {
                     let info = pack_formats::get_version_info(f).unwrap();
                     format!("Format {} ({})", f, info.join(", "))
                 })
@@ -201,7 +201,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
                 .interact()
                 .context("Failed to select pack formats")?;
 
-            let pack_formats: Vec<u8> = selected_formats.iter().map(|&i| PACK_FORMATS[i]).collect();
+            let pack_formats: Vec<String> = selected_formats.iter().map(|&i| PACK_FORMATS[i].to_string()).collect();
 
             if pack_formats.is_empty() {
                 anyhow::bail!("No pack formats selected");
@@ -401,19 +401,19 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
             .context("Failed to copy icon file")?;
     }
 
-    let latest_format = *pack_settings.pack_formats.iter().max().unwrap();
+    let latest_format = pack_settings.pack_formats.iter().max().unwrap().clone();
 
     let supported_formats = if pack_settings.pack_formats.len() > 1 {
-        let min = *pack_settings.pack_formats.iter().min().unwrap();
-        let max = *pack_settings.pack_formats.iter().max().unwrap();
+        let min = pack_settings.pack_formats.iter().min().unwrap().clone();
+        let max = pack_settings.pack_formats.iter().max().unwrap().clone();
 
         // only get valid formats in the range
-        let formats_in_range = pack_formats::get_formats_in_range(min, max);
+        let formats_in_range = pack_formats::get_formats_in_range(&min, &max);
 
         // check if selected formats exactly match the valid formats in range
         let selected_set: std::collections::HashSet<_> =
-            pack_settings.pack_formats.iter().collect();
-        let range_set: std::collections::HashSet<_> = formats_in_range.iter().collect();
+            pack_settings.pack_formats.iter().map(|s| s.as_str()).collect();
+        let range_set: std::collections::HashSet<_> = formats_in_range.iter().copied().collect();
 
         if selected_set == range_set && formats_in_range.len() >= 3 {
             Some(SupportedFormatsType::Object {

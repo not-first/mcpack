@@ -39,11 +39,13 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         let mcmeta: Value = serde_json::from_str(&mcmeta)
             .with_context(|| format!("Failed to parse {}", mcmeta_path.display()))?;
 
-        let pack_format = mcmeta
-            .get("pack")
-            .and_then(|p| p.get("pack_format"))
-            .and_then(|f| f.as_u64())
-            .context("Invalid pack.mcmeta: missing pack_format")? as u8;
+        let pack_format = if let Some(s) = mcmeta.get("pack").and_then(|p| p.get("pack_format")).and_then(|f| f.as_str()) {
+            s.to_string()
+        } else if let Some(n) = mcmeta.get("pack").and_then(|p| p.get("pack_format")).and_then(|f| f.as_u64()) {
+            n.to_string()
+        } else {
+            anyhow::bail!("Invalid pack.mcmeta: missing or invalid pack_format");
+        };
 
         let datapack_name = datapack_path
             .file_name()
@@ -63,7 +65,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             format!(
                 "{}{}.zip",
                 datapack_name,
-                pack_formats::get_version_info(pack_format)
+                pack_formats::get_version_info(&pack_format)
                     .map(|info| format!("_{}", info.last().unwrap()))
                     .unwrap_or_default()
             )

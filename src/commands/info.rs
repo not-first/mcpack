@@ -14,8 +14,8 @@ use crate::pack_formats;
 struct DatapackInfo {
     name: String,
     description: String,
-    pack_format: u8,
-    supported_formats: Vec<u8>,
+    pack_format: String,
+    supported_formats: Vec<String>,
     namespaces: HashMap<String, NamespaceInfo>,
     features: Vec<(String, bool)>,
     filter: Option<FilterInfo>,
@@ -181,21 +181,29 @@ fn parse_text_component(component: &Value) -> String {
 }
 
 // parse the supported formats field in pack.mcmeta
-fn parse_supported_formats(pack_format: u8, formats: Option<&Value>) -> Vec<u8> {
+fn parse_supported_formats(pack_format: String, formats: Option<&Value>) -> Vec<String> {
     let mut supported_formats = vec![pack_format];
 
     if let Some(formats) = formats {
         match formats {
             Value::Array(arr) => {
-                supported_formats = arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+                supported_formats = arr.iter().map(|v| {
+                    if let Some(s) = v.as_str() {
+                        s.to_string()
+                    } else if let Some(n) = v.as_u64() {
+                        n.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                }).collect();
             }
             Value::Object(obj) => {
                 if let (Some(min), Some(max)) = (
-                    obj.get("min_inclusive").and_then(|v| v.as_u64()),
-                    obj.get("max_inclusive").and_then(|v| v.as_u64()),
+                    obj.get("min_inclusive").and_then(|v| if let Some(s) = v.as_str() { Some(s.to_string()) } else { v.as_u64().map(|n| n.to_string()) }),
+                    obj.get("max_inclusive").and_then(|v| if let Some(s) = v.as_str() { Some(s.to_string()) } else { v.as_u64().map(|n| n.to_string()) }),
                 ) {
                     // Only include valid pack formats within the range
-                    supported_formats = pack_formats::get_formats_in_range(min as u8, max as u8);
+                    supported_formats = pack_formats::get_formats_in_range(&min, &max).iter().map(|s| s.to_string()).collect();
                 }
             }
             _ => {}
@@ -304,13 +312,15 @@ fn collect_info_from_zip(
         .get("pack")
         .context("Invalid pack.mcmeta: missing 'pack' object")?;
 
-    let pack_format = pack
-        .get("pack_format")
-        .context("Missing pack_format")?
-        .as_u64()
-        .context("Invalid pack_format")? as u8;
+    let pack_format = if let Some(s) = pack.get("pack_format").and_then(|v| v.as_str()) {
+        s.to_string()
+    } else if let Some(n) = pack.get("pack_format").and_then(|v| v.as_u64()) {
+        n.to_string()
+    } else {
+        anyhow::bail!("Invalid or missing pack_format");
+    };
 
-    let supported_formats = parse_supported_formats(pack_format, pack.get("supported_formats"));
+    let supported_formats = parse_supported_formats(pack_format.clone(), pack.get("supported_formats"));
     let description =
         parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
     let name = Path::new(zip_path)
@@ -396,13 +406,15 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
         .get("pack")
         .context("Invalid pack.mcmeta: missing 'pack' object")?;
 
-    let pack_format = pack
-        .get("pack_format")
-        .context("Missing pack_format")?
-        .as_u64()
-        .context("Invalid pack_format")? as u8;
+    let pack_format = if let Some(s) = pack.get("pack_format").and_then(|v| v.as_str()) {
+        s.to_string()
+    } else if let Some(n) = pack.get("pack_format").and_then(|v| v.as_u64()) {
+        n.to_string()
+    } else {
+        anyhow::bail!("Invalid or missing pack_format");
+    };
 
-    let supported_formats = parse_supported_formats(pack_format, pack.get("supported_formats"));
+    let supported_formats = parse_supported_formats(pack_format.clone(), pack.get("supported_formats"));
     let description =
         parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
 
@@ -521,11 +533,11 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
     println!("{}", style(&info.description).italic());
 
     // always show pack format info
-    let valid_formats: Vec<u8> = info
+    let valid_formats: Vec<&str> = info
         .supported_formats
         .iter()
-        .filter(|&&f| pack_formats::is_valid_format(f))
-        .copied()
+        .filter(|f| pack_formats::is_valid_format(f))
+        .map(|s| s.as_str())
         .collect();
     let versions = pack_formats::get_format_versions(&valid_formats);
     let version_range = pack_formats::format_version_range(&versions);
@@ -541,12 +553,12 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
         info.supported_formats
             .iter()
             .map(|f| {
-                if *f == info.pack_format {
-                    style(f.to_string()).green().bold().to_string()
-                } else if pack_formats::is_valid_format(*f) {
+                if f == &info.pack_format {
+                    style(f).green().bold().to_string()
+                } else if pack_formats::is_valid_format(f) {
                     f.to_string()
                 } else {
-                    style(f.to_string()).red().to_string()
+                    style(f).red().to_string()
                 }
             })
             .collect::<Vec<_>>()
