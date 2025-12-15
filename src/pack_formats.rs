@@ -1,30 +1,32 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-pub const PACK_FORMATS: &[u8] = &[48, 57, 61, 71, 80, 81];
+pub const PACK_FORMATS: &[&str] = &["48", "57", "61", "71", "80", "81", "88.0", "94.1"];
 
 lazy_static! {
-    pub static ref PACK_FORMAT_VERSIONS: HashMap<u8, Vec<&'static str>> = {
+    pub static ref PACK_FORMAT_VERSIONS: HashMap<&'static str, Vec<&'static str>> = {
         let mut m = HashMap::new();
         // Data pack formats from Minecraft Wiki - 1.21+ only
-        m.insert(48, vec!["1.21", "1.21.1"]);
-        m.insert(57, vec!["1.21.2", "1.21.3"]);
-        m.insert(61, vec!["1.21.4"]);
-        m.insert(71, vec!["1.21.5"]);
-        m.insert(80, vec!["1.21.6"]);
-        m.insert(81, vec!["1.21.7"]);
+        m.insert("48", vec!["1.21", "1.21.1"]);
+        m.insert("57", vec!["1.21.2", "1.21.3"]);
+        m.insert("61", vec!["1.21.4"]);
+        m.insert("71", vec!["1.21.5"]);
+        m.insert("80", vec!["1.21.6"]);
+        m.insert("81", vec!["1.21.7", "1.21.8"]);
+        m.insert("88.0", vec!["1.21.9", "1.21.10"]);
+        m.insert("94.1", vec!["1.21.11"]);
         m
     };
 }
 
 // get minecraft version(s)given a pack format
-pub fn get_version_info(format: u8) -> Option<&'static Vec<&'static str>> {
-    PACK_FORMAT_VERSIONS.get(&format)
+pub fn get_version_info(format: &str) -> Option<&'static Vec<&'static str>> {
+    PACK_FORMAT_VERSIONS.get(format)
 }
 
 // check if a given pack format is valid
-pub fn is_valid_format(format: u8) -> bool {
-    PACK_FORMAT_VERSIONS.contains_key(&format)
+pub fn is_valid_format(format: &str) -> bool {
+    PACK_FORMAT_VERSIONS.contains_key(format)
 }
 
 // get a formatted string of all valid pack formats
@@ -45,17 +47,27 @@ pub fn parse_version(version: &str) -> Vec<u32> {
     parts
 }
 
-/// gets all valid pack formats between min and max inclusive format
-pub fn get_formats_in_range(min: u8, max: u8) -> Vec<u8> {
+// gets all valid pack formats between min and max inclusive format
+pub fn get_formats_in_range(min: &str, max: &str) -> Vec<&'static str> {
+    let min_val = parse_pack_format(min);
+    let max_val = parse_pack_format(max);
     PACK_FORMATS
         .iter()
         .copied()
-        .filter(|&f| f >= min && f <= max)
+        .filter(|&f| {
+            let val = parse_pack_format(f);
+            val >= min_val && val <= max_val
+        })
         .collect()
 }
 
-/// gets all minecraft versions supported by a sequence of pack formats
-pub fn get_format_versions(formats: &[u8]) -> Vec<&'static str> {
+// parse pack format string to comparable float
+fn parse_pack_format(format: &str) -> f32 {
+    format.parse().unwrap_or(0.0)
+}
+
+// gets all minecraft versions supported by a sequence of pack formats
+pub fn get_format_versions(formats: &[&str]) -> Vec<&'static str> {
     let mut versions = Vec::new();
     for &format in formats {
         if let Some(info) = get_version_info(format) {
@@ -71,7 +83,7 @@ pub fn get_format_versions(formats: &[u8]) -> Vec<&'static str> {
     versions
 }
 
-/// formats a list of versions into ranges where possible
+// formats a list of versions into ranges where possible
 pub fn format_version_range(versions: &[&str]) -> String {
     if versions.is_empty() {
         return String::new();
