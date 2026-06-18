@@ -39,20 +39,30 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
         let mcmeta: Value = serde_json::from_str(&mcmeta)
             .with_context(|| format!("Failed to parse {}", mcmeta_path.display()))?;
 
-        let pack_format = if let Some(s) = mcmeta.get("pack").and_then(|p| p.get("pack_format")).and_then(|f| f.as_str()) {
-            s.to_string()
-        } else if let Some(n) = mcmeta.get("pack").and_then(|p| p.get("pack_format")).and_then(|f| f.as_u64()) {
-            n.to_string()
-        } else {
-            anyhow::bail!("Invalid pack.mcmeta: missing or invalid pack_format");
-        };
+        let pack = mcmeta
+            .get("pack")
+            .context("Invalid pack.mcmeta: missing 'pack' object")?;
+
+        let max_format: Option<[u32; 2]> = pack
+            .get("max_format")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                if arr.len() != 2 {
+                    return None;
+                }
+                Some([arr[0].as_u64()? as u32, arr[1].as_u64()? as u32])
+            });
 
         let datapack_name = datapack_path
             .file_name()
             .context("Invalid datapack path")?
             .to_string_lossy();
 
-        // **Validate that the custom zip name ends with .zip**
+        let version_suffix = max_format
+            .and_then(pack_formats::version_for_format)
+            .map(|v| format!("_{}", v.label.replace(" - ", "_").replace(' ', "_")))
+            .unwrap_or_default();
+
         let zip_name = if let Some(custom_name) = name {
             if !custom_name.ends_with(".zip") {
                 anyhow::bail!(
@@ -62,13 +72,7 @@ pub fn run(command: &crate::cli::Commands) -> Result<()> {
             }
             custom_name.to_string()
         } else {
-            format!(
-                "{}{}.zip",
-                datapack_name,
-                pack_formats::get_version_info(&pack_format)
-                    .map(|info| format!("_{}", info.last().unwrap()))
-                    .unwrap_or_default()
-            )
+            format!("{}{}.zip", datapack_name, version_suffix)
         };
 
         // determine output directory

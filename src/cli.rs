@@ -21,7 +21,8 @@ pub enum Commands {
         #[arg(short, long, group = "icon_handling")]
         icon: Option<String>,
 
-        /// Pack format(s) to support (space-separated list)
+        /// Pack format(s) to support as decimal values (e.g. "101.1"); provide one for
+        /// a single version, or two to define a min..max range. Only supported formats allowed.
         #[arg(short = 'f', long = "format", num_args = 1.., value_delimiter = ' ')]
         format: Option<Vec<String>>,
 

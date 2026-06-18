@@ -1,9 +1,9 @@
 use crate::cli::Commands;
 use crate::elements::{get_sample_content, ELEMENT_TYPES};
-use crate::pack_formats::{self, PACK_FORMATS};
+use crate::pack_formats;
 use anyhow::{Context, Result};
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use rfd::FileDialog;
 use serde::Serialize;
 use serde_json;
@@ -16,7 +16,8 @@ struct PackSettings {
     name: String,
     description: String,
     icon_path: Option<String>,
-    pack_formats: Vec<String>,
+    min_format: [u32; 2],
+    max_format: [u32; 2],
     include_minecraft_namespace: bool,
     minecraft_tags: Vec<String>,
     custom_namespace: Option<String>,
@@ -31,19 +32,8 @@ struct PackMcmeta {
 #[derive(Serialize)]
 struct Pack {
     description: String,
-    pack_format: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    supported_formats: Option<SupportedFormatsType>,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum SupportedFormatsType {
-    Array(Vec<String>),
-    Object {
-        min_inclusive: String,
-        max_inclusive: String,
-    },
+    min_format: [u32; 2],
+    max_format: [u32; 2],
 }
 
 struct CreateArgs {
@@ -81,19 +71,6 @@ pub fn run(args: &Commands) -> Result<()> {
     else {
         unreachable!("create::run should only be called with Create command");
     };
-
-    // only need to validate format arguments
-    if let Some(formats) = format {
-        for f in formats {
-            if !pack_formats::is_valid_format(f) {
-                anyhow::bail!(
-                    "Invalid pack format: {}. Valid formats are: {}",
-                    f,
-                    pack_formats::get_formats_string()
-                );
-            }
-        }
-    }
 
     let theme = ColorfulTheme::default();
     let settings = collect_settings(
@@ -183,31 +160,83 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
     };
 
     // pack format selection
-    let pack_formats = match args.pack_formats {
-        Some(pack_formats) => pack_formats,
-        None => {
-            let format_strings: Vec<String> = PACK_FORMATS
+    let (min_format, max_format) = match args.pack_formats {
+        Some(formats) => {
+            // Parse and validate each provided format string
+            let parsed: Vec<[u32; 2]> = formats
                 .iter()
-                .map(|f| {
-                    let info = pack_formats::get_version_info(f).unwrap();
-                    format!("Format {} ({})", f, info.join(", "))
+                .map(|s| {
+                    pack_formats::parse_format_string(s).ok_or_else(|| {
+                        let supported: String = pack_formats::SUPPORTED_VERSIONS
+                            .iter()
+                            .map(|v| pack_formats::format_to_string(v.format))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        anyhow::anyhow!(
+                            "Invalid pack format: '{}'. Must be a decimal format (e.g. 101.1). Supported formats: {}",
+                            s, supported
+                        )
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>>>()?;
 
-            let selected_formats = MultiSelect::with_theme(theme)
-                .with_prompt("Select pack format(s)")
-                .items(&format_strings)
-                .defaults(&[true])
-                .interact()
-                .context("Failed to select pack formats")?;
-
-            let pack_formats: Vec<String> = selected_formats.iter().map(|&i| PACK_FORMATS[i].to_string()).collect();
-
-            if pack_formats.is_empty() {
-                anyhow::bail!("No pack formats selected");
+            for f in &parsed {
+                if !pack_formats::is_supported_format(*f) {
+                    let supported: String = pack_formats::SUPPORTED_VERSIONS
+                        .iter()
+                        .map(|v| format!("{} ({})", pack_formats::format_to_string(v.format), v.label))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    anyhow::bail!(
+                        "Pack format '{}' is not supported. Supported formats: {}",
+                        pack_formats::format_to_string(*f),
+                        supported
+                    );
+                }
             }
 
-            pack_formats
+            let min_idx = parsed
+                .iter()
+                .map(|f| pack_formats::index_of_format(*f).unwrap())
+                .min()
+                .unwrap();
+            let max_idx = parsed
+                .iter()
+                .map(|f| pack_formats::index_of_format(*f).unwrap())
+                .max()
+                .unwrap();
+
+            (
+                pack_formats::SUPPORTED_VERSIONS[min_idx].format,
+                pack_formats::SUPPORTED_VERSIONS[max_idx].format,
+            )
+        }
+        None => {
+            let items: Vec<String> = pack_formats::SUPPORTED_VERSIONS
+                .iter()
+                .map(|v| format!("Minecraft {} (format {})", v.label, pack_formats::format_to_string(v.format)))
+                .collect();
+
+            let min_idx = Select::with_theme(theme)
+                .with_prompt("Select the MINIMUM Minecraft version to support")
+                .items(&items)
+                .default(0)
+                .interact()
+                .context("Failed to select minimum version")?;
+
+            let max_items = &items[min_idx..];
+            let max_offset = Select::with_theme(theme)
+                .with_prompt("Select the MAXIMUM Minecraft version to support (choose the same as minimum for a single version)")
+                .items(max_items)
+                .default(0)
+                .interact()
+                .context("Failed to select maximum version")?;
+            let max_idx = min_idx + max_offset;
+
+            (
+                pack_formats::SUPPORTED_VERSIONS[min_idx].format,
+                pack_formats::SUPPORTED_VERSIONS[max_idx].format,
+            )
         }
     };
 
@@ -328,7 +357,8 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
         name,
         description,
         icon_path,
-        pack_formats,
+        min_format,
+        max_format,
         include_minecraft_namespace,
         minecraft_tags,
         custom_namespace,
@@ -401,39 +431,11 @@ fn create_pack(pack_settings: PackSettings, force: bool) -> Result<()> {
             .context("Failed to copy icon file")?;
     }
 
-    let latest_format = pack_settings.pack_formats.iter().max().unwrap().clone();
-
-    let supported_formats = if pack_settings.pack_formats.len() > 1 {
-        let min = pack_settings.pack_formats.iter().min().unwrap().clone();
-        let max = pack_settings.pack_formats.iter().max().unwrap().clone();
-
-        // only get valid formats in the range
-        let formats_in_range = pack_formats::get_formats_in_range(&min, &max);
-
-        // check if selected formats exactly match the valid formats in range
-        let selected_set: std::collections::HashSet<_> =
-            pack_settings.pack_formats.iter().map(|s| s.as_str()).collect();
-        let range_set: std::collections::HashSet<_> = formats_in_range.iter().copied().collect();
-
-        if selected_set == range_set && formats_in_range.len() >= 3 {
-            Some(SupportedFormatsType::Object {
-                min_inclusive: min,
-                max_inclusive: max,
-            })
-        } else {
-            Some(SupportedFormatsType::Array(
-                pack_settings.pack_formats.clone(),
-            ))
-        }
-    } else {
-        None
-    };
-
     let pack_mcmeta = PackMcmeta {
         pack: Pack {
-            pack_format: latest_format,
             description: pack_settings.description,
-            supported_formats,
+            min_format: pack_settings.min_format,
+            max_format: pack_settings.max_format,
         },
     };
 

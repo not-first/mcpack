@@ -1,7 +1,7 @@
 # <img src="https://minecraft.wiki/images/Anvil_%28N%29_JE3.png?d438e" alt="Anvil Image" width="40"/> mcpack
 
 A rust CLI to initialize, add files to, view information about and zip minecraft datapacks through interactive terminal prompts (or optional flags).
-*Only supports the newer datapack folder structure: pack format 48 (minecraft 1.21) and newer.*
+*Supports the decimal pack format scheme (min_format/max_format). Currently supported: Minecraft 26.1–26.1.2 (format 101.1) and 26.2 (format 107.1).*
 
 ![Create command demo](https://vhs.charm.sh/vhs-1pytgMLLVTXDuSljotfYUP.gif)
 
@@ -41,7 +41,7 @@ mcpack create [NAME] [OPTIONS]
 
 - `-d, --description <DESCRIPTION>`: Description of the datapack
 - `-i --icon <ICON_PATH>`: Path to pack icon (must be a PNG). *This will be copied into the datapack directory and correctly renamed to pack.png*
-- `-f, --format <FORMAT(S)>`: Pack format(s) to support, as a space separated list (e.g. `-f 48, 61`)
+- `-f, --format <FORMAT(S)>`: Pack format(s) to support as decimal values (e.g. `101.1`). Provide one for a single version, or two to define a min..max range. Only supported formats allowed.
 - `-m, --minecraft`: Include the minecraft namespace folder (true if flag is provided, false if the flag is not)
   - `--load`: Include template load.mcfunction file
   - `--tick`: Include template tick.mcfunction file
@@ -68,22 +68,22 @@ mcpack create [NAME] [OPTIONS]
 - **Create a datapack partially using flags**
 
   ````bash
-  mcpack create example_name -f 48 61 -n example_namespace -s function advancement loot_table --no-icon
+  mcpack create example_name -f 101.1 107.1 -n example_namespace -s function advancement loot_table --no-icon
   ````
 
-  Create a datapack named `example_name` supporting pack formats 48 and 61, including the specified starter files in a created `example_namespace`. Description, and the option to include minecraft tags are prompted. Icon path prompting is skipped.
+  Create a datapack named `example_name` supporting Minecraft 26.1 through 26.2, including the specified starter files in a created `example_namespace`. Description, and the option to include minecraft tags are prompted. Icon path prompting is skipped.
 
 - **Create a data without prompts**
 
   ````bash
-  mcpack create example_name -d "example datapack description" -f 48 -n example_namespace -i /path/to/icon.png --minecraft --load --no-starters --force
+  mcpack create example_name -d "example datapack description" -f 101.1 -n example_namespace -i /path/to/icon.png --minecraft --load --no-starters --force
   ````
 
-  Initialise a new datapack named `example_name` with the description "example datapack description", supports pack format 48, creates a `example_namespace` folder, includes the specified icon as pack.png located at `/path/to/icon.png`, includes template `load.mcfunction` in the `minecraft` namespace folder, skips the starter file prompts, and forces overwriting any existing directory without confirmation.
+  Initialise a new datapack named `example_name` with the description "example datapack description", supports Minecraft 26.1 (format 101.1), creates a `example_namespace` folder, includes the specified icon as pack.png located at `/path/to/icon.png`, includes template `load.mcfunction` in the `minecraft` namespace folder, skips the starter file prompts, and forces overwriting any existing directory without confirmation.
 
 ### `info`
 
-View information about a datapack folder/zip archive, such as namespaces, descriptions and support minecraft versions.
+View information about a datapack folder/zip archive, such as namespaces, descriptions and supported minecraft versions.
 
 #### Usage (info)
 
@@ -232,8 +232,12 @@ mcpack zip [NAME/PATH] [OPTIONS]
 
 ### Supported Pack Formats
 
-- Pack Format 48 and all newer main version.
-  - Minecraft 1.21 and newer
+This tool uses the decimal pack format scheme (`min_format`/`max_format`). Supported versions:
+
+| Pack Format | Minecraft Versions |
+| ----------- | ------------------ |
+| 101.1       | 26.1 – 26.1.2      |
+| 107.1       | 26.2               |
 
 ### Supported Starter Folders and Element Types
 

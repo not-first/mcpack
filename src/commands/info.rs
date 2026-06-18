@@ -14,8 +14,7 @@ use crate::pack_formats;
 struct DatapackInfo {
     name: String,
     description: String,
-    pack_format: String,
-    supported_formats: Vec<String>,
+    format_range: Option<([u32; 2], [u32; 2])>,
     namespaces: HashMap<String, NamespaceInfo>,
     features: Vec<(String, bool)>,
     filter: Option<FilterInfo>,
@@ -180,37 +179,10 @@ fn parse_text_component(component: &Value) -> String {
     }
 }
 
-// parse the supported formats field in pack.mcmeta
-fn parse_supported_formats(pack_format: String, formats: Option<&Value>) -> Vec<String> {
-    let mut supported_formats = vec![pack_format];
-
-    if let Some(formats) = formats {
-        match formats {
-            Value::Array(arr) => {
-                supported_formats = arr.iter().map(|v| {
-                    if let Some(s) = v.as_str() {
-                        s.to_string()
-                    } else if let Some(n) = v.as_u64() {
-                        n.to_string()
-                    } else {
-                        "0".to_string()
-                    }
-                }).collect();
-            }
-            Value::Object(obj) => {
-                if let (Some(min), Some(max)) = (
-                    obj.get("min_inclusive").and_then(|v| if let Some(s) = v.as_str() { Some(s.to_string()) } else { v.as_u64().map(|n| n.to_string()) }),
-                    obj.get("max_inclusive").and_then(|v| if let Some(s) = v.as_str() { Some(s.to_string()) } else { v.as_u64().map(|n| n.to_string()) }),
-                ) {
-                    // Only include valid pack formats within the range
-                    supported_formats = pack_formats::get_formats_in_range(&min, &max).iter().map(|s| s.to_string()).collect();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    supported_formats
+fn parse_format_range(pack: &Value) -> Option<([u32; 2], [u32; 2])> {
+    let min = pack_formats::format_from_json(pack.get("min_format")?)?;
+    let max = pack_formats::format_from_json(pack.get("max_format")?)?;
+    Some((min, max))
 }
 
 // parse the features field in pack.mcmeta
@@ -312,15 +284,7 @@ fn collect_info_from_zip(
         .get("pack")
         .context("Invalid pack.mcmeta: missing 'pack' object")?;
 
-    let pack_format = if let Some(s) = pack.get("pack_format").and_then(|v| v.as_str()) {
-        s.to_string()
-    } else if let Some(n) = pack.get("pack_format").and_then(|v| v.as_u64()) {
-        n.to_string()
-    } else {
-        anyhow::bail!("Invalid or missing pack_format");
-    };
-
-    let supported_formats = parse_supported_formats(pack_format.clone(), pack.get("supported_formats"));
+    let format_range = parse_format_range(pack);
     let description =
         parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
     let name = Path::new(zip_path)
@@ -389,8 +353,7 @@ fn collect_info_from_zip(
     Ok(DatapackInfo {
         name,
         description,
-        pack_format,
-        supported_formats,
+        format_range,
         namespaces,
         features,
         filter,
@@ -406,15 +369,7 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
         .get("pack")
         .context("Invalid pack.mcmeta: missing 'pack' object")?;
 
-    let pack_format = if let Some(s) = pack.get("pack_format").and_then(|v| v.as_str()) {
-        s.to_string()
-    } else if let Some(n) = pack.get("pack_format").and_then(|v| v.as_u64()) {
-        n.to_string()
-    } else {
-        anyhow::bail!("Invalid or missing pack_format");
-    };
-
-    let supported_formats = parse_supported_formats(pack_format.clone(), pack.get("supported_formats"));
+    let format_range = parse_format_range(pack);
     let description =
         parse_description(pack.get("description").unwrap_or(&Value::String("".into())));
 
@@ -458,8 +413,7 @@ fn collect_info(pack_mcmeta_path: &Path) -> Result<DatapackInfo> {
     Ok(DatapackInfo {
         name,
         description,
-        pack_format,
-        supported_formats,
+        format_range,
         namespaces,
         features,
         filter,
@@ -533,38 +487,40 @@ fn display_info(info: &DatapackInfo, compact: bool, pack_info: bool, namespaces_
     println!("{}", style(&info.description).italic());
 
     // always show pack format info
-    let valid_formats: Vec<&str> = info
-        .supported_formats
-        .iter()
-        .filter(|f| pack_formats::is_valid_format(f))
-        .map(|s| s.as_str())
-        .collect();
-    let versions = pack_formats::get_format_versions(&valid_formats);
-    let version_range = pack_formats::format_version_range(&versions);
+    match &info.format_range {
+        Some((min, max))
+            if pack_formats::is_supported_format(*min)
+                && pack_formats::is_supported_format(*max)
+                && pack_formats::cmp_format(*min, *max) != std::cmp::Ordering::Greater =>
+        {
+            let single = min == max;
+            let formats_str = if single {
+                pack_formats::format_to_string(*min)
+            } else {
+                format!(
+                    "{} - {}",
+                    pack_formats::format_to_string(*min),
+                    pack_formats::format_to_string(*max)
+                )
+            };
+            let versions_str = pack_formats::version_label_range(*min, *max);
 
-    println!(
-        "\n{} Pack Format{}: {} ({})",
-        "📝",
-        if info.supported_formats.len() > 1 {
-            "s"
-        } else {
-            ""
-        },
-        info.supported_formats
-            .iter()
-            .map(|f| {
-                if f == &info.pack_format {
-                    style(f).green().bold().to_string()
-                } else if pack_formats::is_valid_format(f) {
-                    f.to_string()
-                } else {
-                    style(f).red().to_string()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", "),
-        style(version_range).yellow()
-    );
+            println!(
+                "\n{} Pack Format{}: {} ({})",
+                "📝",
+                if single { "" } else { "s" },
+                style(formats_str).green().bold(),
+                style(versions_str).yellow()
+            );
+        }
+        _ => {
+            println!(
+                "\n{} Pack Format: {}",
+                "📝",
+                style("Unsupported / unrecognised format declaration").red()
+            );
+        }
+    }
 
     // return early if compact mode
     if compact {

@@ -1,135 +1,63 @@
-use lazy_static::lazy_static;
-use std::collections::HashMap;
-
-pub const PACK_FORMATS: &[&str] = &["48", "57", "61", "71", "80", "81", "88.0", "94.1"];
-
-lazy_static! {
-    pub static ref PACK_FORMAT_VERSIONS: HashMap<&'static str, Vec<&'static str>> = {
-        let mut m = HashMap::new();
-        // Data pack formats from Minecraft Wiki - 1.21+ only
-        m.insert("48", vec!["1.21", "1.21.1"]);
-        m.insert("57", vec!["1.21.2", "1.21.3"]);
-        m.insert("61", vec!["1.21.4"]);
-        m.insert("71", vec!["1.21.5"]);
-        m.insert("80", vec!["1.21.6"]);
-        m.insert("81", vec!["1.21.7", "1.21.8"]);
-        m.insert("88.0", vec!["1.21.9", "1.21.10"]);
-        m.insert("94.1", vec!["1.21.11"]);
-        m
-    };
+pub struct SupportedVersion {
+    pub format: [u32; 2],
+    pub label: &'static str,
 }
 
-// get minecraft version(s)given a pack format
-pub fn get_version_info(format: &str) -> Option<&'static Vec<&'static str>> {
-    PACK_FORMAT_VERSIONS.get(format)
+pub const SUPPORTED_VERSIONS: &[SupportedVersion] = &[
+    SupportedVersion {
+        format: [101, 1],
+        label: "26.1 - 26.1.2",
+    },
+    SupportedVersion {
+        format: [107, 1],
+        label: "26.2",
+    },
+];
+
+pub fn format_to_string(format: [u32; 2]) -> String {
+    format!("{}.{}", format[0], format[1])
 }
 
-// check if a given pack format is valid
-pub fn is_valid_format(format: &str) -> bool {
-    PACK_FORMAT_VERSIONS.contains_key(format)
-}
-
-// get a formatted string of all valid pack formats
-pub fn get_formats_string() -> String {
-    PACK_FORMATS
-        .iter()
-        .map(|f| f.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-pub fn parse_version(version: &str) -> Vec<u32> {
-    let mut parts: Vec<u32> = version.split('.').map(|s| s.parse().unwrap_or(0)).collect();
-    // add .0 to the end if needed to help sorting (e.g. "1.21" -> "1.21.0")
-    while parts.len() < 3 {
-        parts.push(0);
+pub fn parse_format_string(s: &str) -> Option<[u32; 2]> {
+    let mut parts = s.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
     }
-    parts
+    Some([major, minor])
 }
 
-// gets all valid pack formats between min and max inclusive format
-pub fn get_formats_in_range(min: &str, max: &str) -> Vec<&'static str> {
-    let min_val = parse_pack_format(min);
-    let max_val = parse_pack_format(max);
-    PACK_FORMATS
-        .iter()
-        .copied()
-        .filter(|&f| {
-            let val = parse_pack_format(f);
-            val >= min_val && val <= max_val
-        })
-        .collect()
+pub fn version_for_format(format: [u32; 2]) -> Option<&'static SupportedVersion> {
+    SUPPORTED_VERSIONS.iter().find(|v| v.format == format)
 }
 
-// parse pack format string to comparable float
-fn parse_pack_format(format: &str) -> f32 {
-    format.parse().unwrap_or(0.0)
+pub fn is_supported_format(format: [u32; 2]) -> bool {
+    version_for_format(format).is_some()
 }
 
-// gets all minecraft versions supported by a sequence of pack formats
-pub fn get_format_versions(formats: &[&str]) -> Vec<&'static str> {
-    let mut versions = Vec::new();
-    for &format in formats {
-        if let Some(info) = get_version_info(format) {
-            versions.extend(info.iter().copied());
-        }
-    }
-    versions.sort_by(|&a, &b| {
-        let a_parts = parse_version(a);
-        let b_parts = parse_version(b);
-        a_parts.cmp(&b_parts)
-    });
-    versions.dedup();
-    versions
+pub fn index_of_format(format: [u32; 2]) -> Option<usize> {
+    SUPPORTED_VERSIONS.iter().position(|v| v.format == format)
 }
 
-// formats a list of versions into ranges where possible
-pub fn format_version_range(versions: &[&str]) -> String {
-    if versions.is_empty() {
-        return String::new();
-    }
+pub fn cmp_format(a: [u32; 2], b: [u32; 2]) -> std::cmp::Ordering {
+    a.cmp(&b)
+}
 
-    let mut ranges = Vec::new();
-    let mut range_start = versions[0];
-    let mut prev = versions[0];
-
-    for &version in versions.iter().skip(1) {
-        let prev_parts = parse_version(prev);
-        let curr_parts = parse_version(version);
-
-        // check if versions are consecutive (out of the supported formats)
-        let consecutive = prev_parts
-            .iter()
-            .zip(curr_parts.iter())
-            .rev()
-            .find(|(p, c)| p != c)
-            .map_or(false, |(p, c)| c - p == 1);
-
-        if !consecutive {
-            if prev == range_start {
-                ranges.push(range_start.to_string());
-            } else {
-                ranges.push(format!(
-                    "{}-{}",
-                    range_start.trim_end_matches(".0"),
-                    prev.trim_end_matches(".0")
-                ));
-            }
-            range_start = version;
-        }
-        prev = version;
-    }
-
-    // handle the last range
-    if prev == range_start {
-        ranges.push(range_start.trim_end_matches(".0").to_string());
+pub fn version_label_range(min: [u32; 2], max: [u32; 2]) -> String {
+    let min_label = version_for_format(min).map(|v| v.label).unwrap_or("unknown");
+    let max_label = version_for_format(max).map(|v| v.label).unwrap_or("unknown");
+    if min == max {
+        min_label.to_string()
     } else {
-        ranges.push(format!(
-            "{}-{}",
-            range_start.trim_end_matches(".0"),
-            prev.trim_end_matches(".0")
-        ));
+        format!("{min_label} - {max_label}")
     }
+}
 
-    ranges.join(", ")
+pub fn format_from_json(value: &serde_json::Value) -> Option<[u32; 2]> {
+    let arr = value.as_array()?;
+    if arr.len() != 2 {
+        return None;
+    }
+    Some([arr[0].as_u64()? as u32, arr[1].as_u64()? as u32])
 }
