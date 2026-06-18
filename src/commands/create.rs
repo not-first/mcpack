@@ -218,7 +218,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
                 .collect();
 
             let min_idx = Select::with_theme(theme)
-                .with_prompt("Select the MINIMUM Minecraft version to support")
+                .with_prompt("Select the minimum Minecraft version to support")
                 .items(&items)
                 .default(0)
                 .interact()
@@ -226,7 +226,7 @@ fn collect_settings(theme: &ColorfulTheme, args: CreateArgs) -> Result<PackSetti
 
             let max_items = &items[min_idx..];
             let max_offset = Select::with_theme(theme)
-                .with_prompt("Select the MAXIMUM Minecraft version to support (choose the same as minimum for a single version)")
+                .with_prompt("Select the maximum Minecraft version to support")
                 .items(max_items)
                 .default(0)
                 .interact()
