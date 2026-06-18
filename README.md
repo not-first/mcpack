@@ -1,9 +1,9 @@
 # <img src="https://minecraft.wiki/images/Anvil_%28N%29_JE3.png?d438e" alt="Anvil Image" width="40"/> mcpack
 
 A rust CLI to initialize, add files to, view information about and zip minecraft datapacks through interactive terminal prompts (or optional flags).
-*Supports the decimal pack format scheme (min_format/max_format). Currently supported: Minecraft 26.1–26.1.2 (format 101.1) and 26.2 (format 107.1).*
+*Supports Minecraft 26.1 (format 101.1) and newer.*
 
-![Create command demo](https://vhs.charm.sh/vhs-1pytgMLLVTXDuSljotfYUP.gif)
+![Create command demo](https://vhs.charm.sh/vhs-4XsBxGzRFp7asW6ICiNMtp.gif)
 
 ## Installation
 
